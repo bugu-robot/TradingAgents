@@ -89,7 +89,11 @@ def use(profile: str):
 @app.command("logout")
 def sign_out(profile: str | None = typer.Option(None, "--profile")):
     """Revoke the selected renewable session, then remove its local tokens."""
-    confirmed = ChatGPTAuthStore(profile=profile).logout()
+    try:
+        confirmed = ChatGPTAuthStore(profile=profile).logout()
+    except (SubscriptionError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from None
     typer.echo("Signed out. Registration retained for later sign-in.")
     if not confirmed:
         typer.echo("Remote revocation was not confirmed. Disconnect TradingAgents in ChatGPT Settings.")

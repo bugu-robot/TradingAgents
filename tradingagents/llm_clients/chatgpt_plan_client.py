@@ -49,6 +49,7 @@ def responses_input(messages: list[BaseMessage]) -> list[dict]:
     """Replay all history, including native reasoning/function-call items."""
     items = []
     pending = set()
+    seen = set()
     for message in messages:
         if isinstance(message, ToolMessage):
             if message.tool_call_id not in pending:
@@ -70,9 +71,10 @@ def responses_input(messages: list[BaseMessage]) -> list[dict]:
                                   "namespace": _NAMESPACE, "name": call["name"],
                                   "arguments": json.dumps(call["args"])})
             for call in message.tool_calls:
-                if not call.get("id") or call["id"] in pending:
+                if not call.get("id") or call["id"] in seen:
                     raise ValueError("Tool call IDs must be present and unique.")
                 pending.add(call["id"])
+                seen.add(call["id"])
         elif isinstance(message, (SystemMessage, HumanMessage, ChatMessage)):
             role = "developer" if isinstance(message, SystemMessage) else (
                 "user" if isinstance(message, HumanMessage) else message.role

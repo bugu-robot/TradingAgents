@@ -43,6 +43,24 @@ def test_missing_login_is_actionable_and_never_uses_api_key(store, monkeypatch):
     assert "api-key-must-not-be-used" not in repr(store)
 
 
+def test_pending_registration_reuses_client_without_becoming_active(store):
+    store.remember_registration("oaiapp_a")
+    parameters, _ = auth.authorization_parameters(store, "http://127.0.0.1:1455/auth/callback")
+    assert parameters["client_id"] == "oaiapp_a" and "agent_name_hint" not in parameters
+    assert not store.status()["connected"] and not (store.directory / "active.json").exists()
+    with pytest.raises(SubscriptionError):
+        store.preflight()
+    store.save_login(token(), "oaiapp_a", "nonce", {"nonce": "nonce", "sub": "user-a"})
+    assert store.preflight()["subject"] == "user-a"
+
+
+def test_pending_registration_cannot_replace_existing_account(store):
+    record = connect(store)
+    with pytest.raises(SubscriptionError):
+        store.remember_registration("oaiapp_other")
+    assert store.read() == record
+
+
 @pytest.mark.parametrize("overrides", [
     {"scopes": ["openid"]}, {"client_id": "dynamic_agent_client"},
     {"issuer": "https://evil.invalid"}, {"subject": ""},

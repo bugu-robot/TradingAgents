@@ -176,7 +176,11 @@ class ChatGPTAuthStore:
             if float(record["expires_at"]) > time.time() + 60:
                 return record["access_token"]
             earliest = record.get("earliest_refresh_at", 0)
-            if earliest and float(earliest) > time.time():
+            try:
+                earliest = float(earliest or 0)
+            except (TypeError, ValueError):
+                raise _auth_error("ChatGPT renewal metadata is invalid; sign in again.") from None
+            if earliest > time.time():
                 raise SubscriptionError("ChatGPT token renewal is not yet available; retry later.", kind="transient")
             try:
                 token = _token_request({"grant_type": "refresh_token", "client_id": record["client_id"],
@@ -189,13 +193,28 @@ class ChatGPTAuthStore:
             _write_json(self.path, renewed)
             return renewed["access_token"]
 
+    def remember_registration(self, client_id: str) -> None:
+        """Retain an issued registration if the first code exchange is interrupted.
+
+        This pending profile has no identity or tokens and cannot be activated.
+        Existing, validated account records are never replaced here.
+        """
+        with self.locked():
+            old = self.read()
+            if old.get("client_id") and old["client_id"] != client_id:
+                raise _auth_error("Issued client ID did not match the selected registration.")
+            if not old:
+                _write_json(self.path, {"client_id": client_id, "issuer": AUTH_ORIGIN})
+
     def save_login(self, token: dict, client_id: str, nonce: str, identity: dict) -> None:
         """Identity is supplied only after OIDC signature/claims validation."""
         if not secrets.compare_digest(str(identity.get("nonce", "")), nonce):
             raise _auth_error("ChatGPT identity nonce did not match the authorization attempt.")
         with self.locked():
             old = self.read()
-            if old and (old.get("client_id") != client_id or old.get("subject") != identity["sub"]):
+            if old and (old.get("client_id") != client_id or (
+                old.get("subject") and old["subject"] != identity["sub"]
+            )):
                 raise _auth_error("Returning sign-in did not match the selected account. Use a new profile label.")
             record = {"client_id": client_id, "subject": identity["sub"], "issuer": AUTH_ORIGIN,
                       "email": identity.get("email")}
@@ -369,6 +388,7 @@ def login(store: ChatGPTAuthStore, *, port: int = 1455, open_browser: bool = Tru
             raise _auth_error("ChatGPT sign-in timed out; existing profiles were preserved.")
         if received.get("error"):
             raise _auth_error("ChatGPT sign-in was declined or callback validation failed.")
+    store.remember_registration(received["client_id"])
     token = _token_request({"grant_type": "authorization_code", "client_id": received["client_id"],
                             "code": received["code"], "code_verifier": verifier,
                             "redirect_uri": redirect, "resource": RESOURCE})
