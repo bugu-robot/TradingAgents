@@ -37,6 +37,7 @@ from cli.prompts import (
     select_shallow_thinking_agent,
 )
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.llm_clients.subscription_registry import validate_subscription_tier
 
 
 def get_user_selections(flags=None):
@@ -80,6 +81,11 @@ def _check_tier_providers(main_provider: str) -> None:
     used = []
     for tier in ("quick", "deep"):
         provider = (DEFAULT_CONFIG.get(f"{tier}_think_provider") or main_provider).lower()
+        try:
+            validate_subscription_tier(provider, tier)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1) from None
         if provider != main_provider.lower():
             variable = f"TRADINGAGENTS_{tier.upper()}_THINK_LLM"
             if not os.environ.get(variable):
