@@ -316,7 +316,9 @@ def _prompt_selections(prefs, flags):
     reasoning_effort = None
     anthropic_effort = None
 
-    provider_lower = selected_llm_provider.lower()
+    from tradingagents.llm_clients.subscription_registry import subscription_spec
+    spec = subscription_spec(selected_llm_provider)
+    provider_lower = (spec.knob_provider if spec else None) or selected_llm_provider.lower()
     if provider_from_env:
         thinking_level = DEFAULT_CONFIG["google_thinking_level"]
         reasoning_effort = DEFAULT_CONFIG["openai_reasoning_effort"]

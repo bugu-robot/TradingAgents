@@ -94,6 +94,9 @@ _MINIMAX_MODELS: dict[str, list[ModelOption]] = {
 
 
 MODEL_OPTIONS: ProviderModeOptions = {
+    # The account's current plan catalog is discovered after OAuth; do not
+    # imply that the paid API's model list describes subscription entitlement.
+    "chatgpt_plan": _CUSTOM_ONLY,
     "openai": {
         "quick": [
             ("GPT-6 Luna - Fast, high-volume and cost-efficient", "gpt-6-luna"),

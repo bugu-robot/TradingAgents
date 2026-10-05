@@ -312,13 +312,20 @@ def _select_model(provider: str, mode: str, default=None) -> str:
             "Please enter a deployment name.",
         )
 
+    from tradingagents.llm_clients.subscription_registry import subscription_model_options
+    options = subscription_model_options(provider)
+    if options is None:
+        options = get_model_options(provider, mode)
+    else:
+        options = [*options, ("Custom model ID", "custom")]
+
     choice = questionary.select(
         f"Select Your [{mode.title()}-Thinking LLM Engine]:",
         choices=[
             questionary.Choice(display, value=value)
-            for display, value in get_model_options(provider, mode)
+            for display, value in options
         ],
-        default=_matching_choice(get_model_options(provider, mode), default),
+        default=_matching_choice(options, default),
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
             [
@@ -359,7 +366,8 @@ def _llm_provider_table() -> list[tuple[str, str, str | None]]:
     localhost default when unset.
     """
     ollama_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
-    return [
+    from tradingagents.llm_clients.subscription_registry import SUBSCRIPTION_PROVIDERS
+    return [(spec.label, key, None) for key, spec in SUBSCRIPTION_PROVIDERS.items()] + [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
         ("Google", "google", None),
         ("Anthropic", "anthropic", "https://api.anthropic.com/"),
@@ -635,6 +643,16 @@ def ensure_api_key(provider: str) -> str | None:
     Returns None for providers that do not require a key (e.g. ollama)
     and for providers not found in the canonical mapping.
     """
+    from tradingagents.llm_clients.subscription_errors import SubscriptionError
+    from tradingagents.llm_clients.subscription_registry import preflight_subscription
+    try:
+        label = preflight_subscription(provider)
+    except SubscriptionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if label is not None:
+        console.print(f"[green]✓ Using {label}[/green]")
+        return None
     env_var = get_api_key_env(provider)
     if env_var is None:
         return None  # ollama / unknown — no key check possible
