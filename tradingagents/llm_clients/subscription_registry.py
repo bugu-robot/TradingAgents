@@ -25,6 +25,12 @@ SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
         unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),
         knob_provider="openai",
     ),
+    "gemini_cli": SubscriptionProvider(
+        label="Gemini CLI (Google subscription; deep tier only)",
+        module="gemini_cli_client", client_class="GeminiCLIClient",
+        tool_calls=False, structured_output="none",
+        unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),
+    ),
 }
 
 
