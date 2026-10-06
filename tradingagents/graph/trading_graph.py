@@ -259,7 +259,7 @@ class TradingAgentsGraph:
         local paths are never recorded.
         """
         cfg = self.config
-        return {
+        settings = {
             "version": tradingagents.__version__,
             "llm_provider": cfg.get("llm_provider"),
             "deep_think_provider": tier_provider(cfg, "deep") if cfg.get("llm_provider") else None,
@@ -273,6 +273,14 @@ class TradingAgentsGraph:
             "data_vendors": dict(cfg.get("data_vendors") or {}),
             "tool_vendors": dict(cfg.get("tool_vendors") or {}),
         }
+        from tradingagents.llm_clients.subscription_registry import subscription_spec
+        for tier in ("quick", "deep"):
+            provider = settings[f"{tier}_think_provider"]
+            spec = subscription_spec(provider) if provider else None
+            if spec:
+                for key, _ in spec.configuration_parameters:
+                    settings[key] = cfg.get(key)
+        return settings
 
     def save_reports(self, final_state, ticker, save_path=None, html=True) -> Path:
         """Write the report tree for a completed run, like the CLI does.

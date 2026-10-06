@@ -21,6 +21,7 @@ from cli.prompts import (
     ask_openai_reasoning_effort,
     ask_output_language,
     ask_qwen_region,
+    ask_subscription_effort,
     confirm_ollama_endpoint,
     detect_asset_type,
     ensure_api_key,
@@ -37,6 +38,10 @@ from cli.prompts import (
     select_shallow_thinking_agent,
 )
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.llm_clients.subscription_registry import (
+    subscription_spec,
+    validate_subscription_tier,
+)
 
 
 def get_user_selections(flags=None):
@@ -65,14 +70,19 @@ def unattended_gaps(flags) -> list[str]:
         gaps.append("TRADINGAGENTS_LLM_PROVIDER")
     if not (env("TRADINGAGENTS_QUICK_THINK_LLM") or env("TRADINGAGENTS_DEEP_THINK_LLM")):
         gaps.append("TRADINGAGENTS_QUICK_THINK_LLM or TRADINGAGENTS_DEEP_THINK_LLM")
+    for tier in ("quick", "deep"):
+        provider = DEFAULT_CONFIG.get(f"{tier}_think_provider") or DEFAULT_CONFIG["llm_provider"]
+        variable = f"TRADINGAGENTS_{tier.upper()}_THINK_LLM"
+        if subscription_spec(provider) and not env(variable):
+            gaps.append(variable)
     return gaps
 
 
 def _check_tier_providers(main_provider: str) -> None:
     """Check each provider the model tiers use (#1440) before the run.
 
-    A tier on another provider needs its model from its variable, since the
-    model question offers the main provider's models. Each provider a tier uses
+    An API tier on another provider needs its model from its variable. A
+    subscription tier can discover its own catalog interactively. Each provider a tier uses
     has its key checked now, prompting for a missing one, rather than at its
     first call, which for the deep tier comes after everything else has been
     paid for; a provider no tier uses needs no key.
@@ -80,7 +90,12 @@ def _check_tier_providers(main_provider: str) -> None:
     used = []
     for tier in ("quick", "deep"):
         provider = (DEFAULT_CONFIG.get(f"{tier}_think_provider") or main_provider).lower()
-        if provider != main_provider.lower():
+        try:
+            validate_subscription_tier(provider, tier)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1) from None
+        if provider != main_provider.lower() and subscription_spec(provider) is None:
             variable = f"TRADINGAGENTS_{tier.upper()}_THINK_LLM"
             if not os.environ.get(variable):
                 console.print(f"[red]The {tier} tier runs on {provider}; set {variable} to one of its models.[/red]")
@@ -89,6 +104,48 @@ def _check_tier_providers(main_provider: str) -> None:
             used.append(provider)
     for provider in used:
         ensure_api_key(provider)
+
+
+def _select_thinking_models(main_provider: str, prefs: dict) -> tuple[str, str]:
+    """Select each subscription tier independently from its own account catalog.
+
+    Preserve upstream's env/default shortcut for ordinary API providers. One
+    tier's env model must never suppress a subscription catalog on the other.
+    """
+    any_env = any(os.environ.get(f"TRADINGAGENTS_{tier.upper()}_THINK_LLM") for tier in ("quick", "deep"))
+    selected = []
+    for tier, prompt in (("quick", select_shallow_thinking_agent), ("deep", select_deep_thinking_agent)):
+        provider = (DEFAULT_CONFIG.get(f"{tier}_think_provider") or main_provider).lower()
+        validate_subscription_tier(provider, tier)
+        if os.environ.get(f"TRADINGAGENTS_{tier.upper()}_THINK_LLM") or (any_env and subscription_spec(provider) is None):
+            model = DEFAULT_CONFIG[f"{tier}_think_llm"]
+            console.print(f"[green]✓ {tier.title()} thinking model from environment/default:[/green] {model}")
+        else:
+            remembered = prefs if prefs.get("llm_provider") == main_provider else {}
+            model = prompt(provider, remembered.get(f"{tier}_think_llm"))
+        selected.append(model)
+    return tuple(selected)
+
+
+def _subscription_efforts(main_provider: str) -> dict:
+    """Drive subscription knobs from central capabilities, independent of tier."""
+    values = {}
+    for tier in ("quick", "deep"):
+        provider = (DEFAULT_CONFIG.get(f"{tier}_think_provider") or main_provider).lower()
+        spec = subscription_spec(provider)
+        if spec is None or not spec.effort_choices:
+            continue
+        for key, parameter in spec.configuration_parameters:
+            if parameter != "effort" or key in values:
+                continue
+            value = DEFAULT_CONFIG.get(key)
+            if not (os.environ.get(f"TRADINGAGENTS_{key.upper()}") or os.environ.get("TRADINGAGENTS_LLM_PROVIDER")):
+                value = ask_subscription_effort(provider, default=value)
+            if value is not None and value not in spec.effort_choices:
+                console.print("[red]Subscription effort must be low, medium or high.[/red]")
+                raise typer.Exit(code=1)
+            values[key] = value
+    return values
 
 
 def _from_flag(parse, value, *args):
@@ -285,27 +342,8 @@ def _prompt_selections(prefs, flags):
 
     _check_tier_providers(selected_llm_provider)
 
-    # Step 7: Thinking agents (skipped when either model is set via environment)
-    if os.environ.get("TRADINGAGENTS_QUICK_THINK_LLM") or os.environ.get("TRADINGAGENTS_DEEP_THINK_LLM"):
-        selected_shallow_thinker = DEFAULT_CONFIG["quick_think_llm"]
-        selected_deep_thinker = DEFAULT_CONFIG["deep_think_llm"]
-        console.print(
-            f"[green]✓ Thinking agents from environment:[/green] "
-            f"quick={selected_shallow_thinker}, deep={selected_deep_thinker}"
-        )
-    else:
-        console.print(
-            create_question_box(
-                "Step 7: Thinking Agents", "Select your thinking agents for analysis"
-            )
-        )
-        remembered = prefs if prefs.get("llm_provider") == selected_llm_provider else {}
-        selected_shallow_thinker = select_shallow_thinking_agent(
-            selected_llm_provider, remembered.get("quick_think_llm")
-        )
-        selected_deep_thinker = select_deep_thinking_agent(
-            selected_llm_provider, remembered.get("deep_think_llm")
-        )
+    # Step 7: Existing tier providers, independent subscription account catalogs.
+    selected_shallow_thinker, selected_deep_thinker = _select_thinking_models(selected_llm_provider, prefs)
 
     # Step 8: Provider-specific reasoning/thinking configuration. Each knob is
     # settable via its TRADINGAGENTS_* env var; when that var is set (or the
@@ -316,7 +354,8 @@ def _prompt_selections(prefs, flags):
     reasoning_effort = None
     anthropic_effort = None
 
-    provider_lower = selected_llm_provider.lower()
+    spec = subscription_spec(selected_llm_provider)
+    provider_lower = (spec.knob_provider if spec else None) or selected_llm_provider.lower()
     if provider_from_env:
         thinking_level = DEFAULT_CONFIG["google_thinking_level"]
         reasoning_effort = DEFAULT_CONFIG["openai_reasoning_effort"]
@@ -353,6 +392,7 @@ def _prompt_selections(prefs, flags):
         "google_thinking_level": thinking_level,
         "openai_reasoning_effort": reasoning_effort,
         "anthropic_effort": anthropic_effort,
+        **_subscription_efforts(selected_llm_provider),
         "output_language": output_language,
     }
 

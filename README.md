@@ -291,6 +291,44 @@ A tier on its own provider uses that provider's key and default endpoint; set `q
 
 See `tradingagents/default_config.py` for all configuration options.
 
+### Subscription-backed providers (this fork)
+
+`chatgpt_plan` uses the officially documented **Sign in with ChatGPT** plan-use
+authorization and public Responses API, without `OPENAI_API_KEY`. It supports
+native structured output and the analysts' sequential tool-call loops.
+`antigravity_cli` targets **Google AI Pro** through the official native `agy`
+CLI 1.2.17. Google authentication/refresh remain owned by Antigravity. This
+**deep-only** adapter implements native JSON Schema with independent validation;
+it does not implement TradingAgents native tool calling.
+The catalog command uses the global flag before the subcommand:
+`agy --output-format json models`. Antigravity CLI 1.3.0 was reported as a newer
+stable release after the previous review but has not been adapter-reviewed; the
+pin remains 1.2.17 until a separate compatibility review after live acceptance.
+
+Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
+`deep_think_provider="antigravity_cli"`, or ChatGPT Plan for both tiers. The
+adapter rejects API/provider/custom-endpoint modes, unsafe global customization,
+credit overage and unreviewed policy before inference. It sanitizes the child
+environment and uses a scoped zero-tool agent. The official CLI owns cached
+authentication; init and terminal SUCCESS are validated before accepting output.
+
+Select Quick and Deep models independently: ChatGPT models come from its signed-in
+account catalog, and Antigravity models come from the non-inference
+`agy --output-format json models` command. Gemini, Claude and other safely named catalog families are selectable;
+unlisted/custom model IDs and silent model/API fallback are rejected. Antigravity
+effort supports low, medium and high. Catalog availability changes and does not
+prove entitlement. **Live acceptance remains pending:** verify cached execution,
+native schema, actual zero-tool scoping, official `/usage` plan/quota and a full
+AAPL run. Offline mocks do not establish entitlement or billing.
+The former Gemini CLI subscription provider has been removed; the ordinary
+`google` Gemini API provider remains unchanged.
+
+Read [STATUS.md](STATUS.md) for current checkpoints, [DESIGN.md](DESIGN.md) and
+[DECISIONS.md](DECISIONS.md) for architecture, [VERIFICATION.md](VERIFICATION.md)
+for the single Ubuntu sign-in/smoke/full-AAPL session, and
+[UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) for stable-release maintenance. Draft PR #1
+remains unmerged. Existing API providers remain available by explicit selection.
+
 ### Fundamentals as filed
 
 US company statements come from SEC EDGAR, which records the date every figure was filed. A run dated in the past reads the statements exactly as they stood that day: a fiscal year that has ended but has not been filed yet is not served, and a figure restated later still reads as first reported. Apple's 2008 total assets were filed as $39.6B and restated to $36.2B in 2010, so a run dated in between reads $39.6B. EDGAR needs no account or API key.

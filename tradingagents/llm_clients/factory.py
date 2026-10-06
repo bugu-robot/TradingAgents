@@ -2,6 +2,7 @@
 from typing import Any
 
 from .base_client import BaseLLMClient
+from .subscription_registry import provider_module, subscription_spec, validate_subscription_tier
 
 
 def create_llm_client(
@@ -29,6 +30,11 @@ def create_llm_client(
         ValueError: If provider is not supported
     """
     provider_lower = provider.lower()
+
+    subscription = subscription_spec(provider_lower)
+    if subscription is not None:
+        client_class = getattr(provider_module(provider_lower), subscription.client_class)
+        return client_class(model, base_url, **kwargs)
 
     # Native (non-OpenAI) APIs are matched first so their string check doesn't
     # import the OpenAI client. Everything else is OpenAI-compatible and routes
@@ -91,13 +97,23 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
     """Keyword arguments for ``create_llm_client`` from a TradingAgents config."""
     kwargs = {}
     provider = config.get("llm_provider", "").lower()
+    subscription = subscription_spec(provider)
+
+    if subscription is not None:
+        for key in subscription.unsupported_parameters:
+            if config.get(key) is not None and config.get(key) != "":
+                raise ValueError(f"{provider} does not support {key}; unset this setting for subscription use.")
+        for config_key, parameter in subscription.configuration_parameters:
+            value = config.get(config_key)
+            if value is not None and value != "":
+                kwargs[parameter] = value
 
     if provider == "google":
         thinking_level = config.get("google_thinking_level")
         if thinking_level:
             kwargs["thinking_level"] = thinking_level
 
-    elif provider == "openai":
+    elif provider == "openai" or (subscription and subscription.knob_provider == "openai"):
         reasoning_effort = config.get("openai_reasoning_effort")
         if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
@@ -143,6 +159,7 @@ def create_tier_client(config: dict, tier: str, **extra) -> BaseLLMClient:
     else the provider's default: ``backend_url`` belongs to ``llm_provider``.
     """
     provider = tier_provider(config, tier)
+    validate_subscription_tier(provider, tier)
     if provider == config["llm_provider"].lower():
         base_url = config.get(f"{tier}_think_backend_url") or config.get("backend_url")
     else:

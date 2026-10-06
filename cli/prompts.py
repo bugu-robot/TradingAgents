@@ -312,13 +312,18 @@ def _select_model(provider: str, mode: str, default=None) -> str:
             "Please enter a deployment name.",
         )
 
+    from tradingagents.llm_clients.subscription_registry import subscription_model_options
+    options = subscription_model_options(provider)
+    if options is None:
+        options = get_model_options(provider, mode)
+
     choice = questionary.select(
         f"Select Your [{mode.title()}-Thinking LLM Engine]:",
         choices=[
             questionary.Choice(display, value=value)
-            for display, value in get_model_options(provider, mode)
+            for display, value in options
         ],
-        default=_matching_choice(get_model_options(provider, mode), default),
+        default=_matching_choice(options, default),
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
         style=questionary.Style(
             [
@@ -349,6 +354,23 @@ def select_deep_thinking_agent(provider, default=None) -> str:
     return _select_model(provider, "deep", default)
 
 
+def ask_subscription_effort(provider: str, default=None) -> str:
+    """Select only the effort values admitted by this transport's capabilities."""
+    from tradingagents.llm_clients.subscription_registry import subscription_spec
+    spec = subscription_spec(provider)
+    if spec is None or not spec.effort_choices:
+        raise ValueError("This subscription provider has no supported effort selector.")
+    choice = questionary.select(
+        f"Select {spec.label} effort:",
+        choices=[questionary.Choice(value.title(), value=value) for value in spec.effort_choices],
+        default=default if default in spec.effort_choices else "medium",
+    ).ask()
+    if choice not in spec.effort_choices:
+        console.print("[red]No supported subscription effort selected. Exiting.[/red]")
+        raise typer.Exit(code=1)
+    return choice
+
+
 def _llm_provider_table() -> list[tuple[str, str, str | None]]:
     """(display_name, provider_key, base_url) for every supported provider.
 
@@ -359,7 +381,8 @@ def _llm_provider_table() -> list[tuple[str, str, str | None]]:
     localhost default when unset.
     """
     ollama_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
-    return [
+    from tradingagents.llm_clients.subscription_registry import SUBSCRIPTION_PROVIDERS
+    return [(spec.label, key, None) for key, spec in SUBSCRIPTION_PROVIDERS.items()] + [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
         ("Google", "google", None),
         ("Anthropic", "anthropic", "https://api.anthropic.com/"),
@@ -635,6 +658,16 @@ def ensure_api_key(provider: str) -> str | None:
     Returns None for providers that do not require a key (e.g. ollama)
     and for providers not found in the canonical mapping.
     """
+    from tradingagents.llm_clients.subscription_errors import SubscriptionError
+    from tradingagents.llm_clients.subscription_registry import preflight_subscription
+    try:
+        label = preflight_subscription(provider)
+    except SubscriptionError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if label is not None:
+        console.print(f"[green]✓ Using {label}[/green]")
+        return None
     env_var = get_api_key_env(provider)
     if env_var is None:
         return None  # ollama / unknown — no key check possible
