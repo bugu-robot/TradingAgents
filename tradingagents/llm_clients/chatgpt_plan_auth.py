@@ -309,7 +309,7 @@ def validate_identity(id_token: str, client_id: str, nonce: str) -> dict:
         raise _auth_error("ChatGPT ID token signature or claims failed validation.") from None
 
 
-def authorization_parameters(store: ChatGPTAuthStore, redirect_uri: str):
+def authorization_parameters(store: ChatGPTAuthStore, redirect_uri: str, *, enable_plan_usage: bool = False):
     record = store.read()
     state, nonce, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(32), secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
@@ -319,6 +319,10 @@ def authorization_parameters(store: ChatGPTAuthStore, redirect_uri: str):
                   "code_challenge_method": "S256", "code_challenge": challenge}
     if not record.get("client_id"):
         parameters["agent_name_hint"] = "TradingAgents"
+    elif enable_plan_usage:
+        # Explicit user action only. The official prompt=consent path is
+        # supported before per-integration force_reconsent rollout.
+        parameters["prompt"] = "consent"
     # Omit id_token_hint so terminal URLs never reveal an ID token. The official
     # returning sign-in without a hint displays the account selector instead.
     return parameters, verifier
@@ -345,7 +349,7 @@ def parse_callback(path: str, parameters: dict) -> tuple[str, str]:
 
 
 def login(store: ChatGPTAuthStore, *, port: int = 1455, open_browser: bool = True,
-          timeout: float = 300, announce=print) -> dict:
+          timeout: float = 300, enable_plan_usage: bool = False, announce=print) -> dict:
     """Explicit interactive step; ordinary provider invocation never calls this."""
     received = {}
 
@@ -376,7 +380,7 @@ def login(store: ChatGPTAuthStore, *, port: int = 1455, open_browser: bool = Tru
     with server:
         server.timeout = 1
         redirect = f"http://127.0.0.1:{server.server_port}/auth/callback"
-        parameters, verifier = authorization_parameters(store, redirect)
+        parameters, verifier = authorization_parameters(store, redirect, enable_plan_usage=enable_plan_usage)
         url = AUTHORIZE_URL + "?" + urlencode(parameters)
         announce("Continue with ChatGPT: " + url)
         if open_browser:

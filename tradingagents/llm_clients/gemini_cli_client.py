@@ -56,7 +56,8 @@ def _probe_cli(executable: str) -> str:
         help_ = subprocess.run([executable, "--help"], stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=15, env=_child_environment(), check=False)
         if help_.returncode or not all(flag in help_.stdout for flag in (
-            "--prompt", "--output-format", "--model", "--skip-trust", "--approval-mode"
+            "--prompt", "--output-format", "--model", "--skip-trust", "--approval-mode",
+            "--extensions", "--allowed-mcp-server-names"
         )):
             raise SubscriptionError("Gemini CLI does not expose the required headless flags.", kind="configuration")
         return match[1]
@@ -227,13 +228,14 @@ _WORKSPACE_SETTINGS = {
     "security": {"auth": {"selectedType": _OAUTH, "enforcedType": _OAUTH, "useExternal": False},
                  "folderTrust": {"enabled": False}},
     "tools": {"core": [], "discoveryCommand": "", "callCommand": ""},
-    "admin": {"mcp": {"enabled": False}, "extensions": {"enabled": False}, "skills": {"enabled": False}},
+    "mcp": {"serverCommand": ""},
     "hooksConfig": {"enabled": False}, "skills": {"enabled": False},
     "experimental": {"enableAgents": False}, "ide": {"enabled": False},
     "context": {"fileName": "TRADINGAGENTS_NO_CONTEXT.md", "includeDirectoryTree": False, "includeDirectories": []},
     "model": {"maxSessionTurns": 1},
     "advanced": {"ignoreLocalEnv": True, "excludedEnvVars": sorted(_BILLING_ENV)},
     "privacy": {"usageStatisticsEnabled": False}, "telemetry": {"enabled": False},
+    "billing": {"overageStrategy": "never"},
     "general": {"enableAutoUpdate": False, "enableAutoUpdateNotification": False},
 }
 
@@ -276,12 +278,20 @@ class GeminiCLIChatModel(BaseChatModel):
             system_path.chmod(0o600)
             env = _child_environment()
             env["GEMINI_SYSTEM_MD"] = str(system_path)
-            env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] = str(root / ".gemini" / "settings.json")
+            # Keep caller-wide overrides out of this isolated personal-account
+            # invocation. CLI 0.62 ignores insecure system files and overwrites
+            # local admin.* fields with remote admin defaults; neither can be
+            # used to disable extensions/MCP. Use the documented flags below.
             defaults_path = root / "defaults.json"
             defaults_path.write_text("{}", encoding="utf-8")
+            env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"] = str(defaults_path)
             env["GEMINI_CLI_SYSTEM_DEFAULTS_PATH"] = str(defaults_path)
             command = [executable, "--prompt", "Answer the supplied conversation.", "--output-format", "json",
-                       "--model", self.model_name, "--skip-trust", "--approval-mode", "default"]
+                       "--model", self.model_name, "--skip-trust", "--approval-mode", "default",
+                       "--extensions", "none", "--allowed-mcp-server-names", root.name]
+            # A nonempty allowlist containing this unique, unconfigured workspace
+            # name blocks discovery/startup of every cached MCP server. An empty
+            # allowlist means allow all in CLI 0.62 and must not be used here.
             for attempt in range(self.max_retries + 1):
                 try:
                     stdout, stderr, code = _run_process(command, prompt, cwd=workdir, env=env,

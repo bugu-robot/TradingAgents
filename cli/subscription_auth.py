@@ -18,17 +18,20 @@ app = typer.Typer(help="Manage subscription connections; credentials are never p
 def sign_in(provider: str = typer.Argument("chatgpt_plan"),
             profile: str | None = typer.Option(None, "--profile"),
             port: int = typer.Option(1455, "--port", min=1, max=65535),
-            browser: bool = typer.Option(True, "--browser/--no-browser")):
+            browser: bool = typer.Option(True, "--browser/--no-browser"),
+            enable_plan_usage: bool = typer.Option(False, "--enable-plan-usage", help="Explicitly request consent after a prior sign-in without plan usage.")):
     """Continue with ChatGPT; approve plan usage in the official sign-in page."""
     if provider != "chatgpt_plan":
         typer.echo("For Google subscription sign-in, run gemini and select Sign in with Google.", err=True)
         raise typer.Exit(1)
     try:
-        status = login(ChatGPTAuthStore(profile=profile), port=port, open_browser=browser, announce=typer.echo)
+        status = login(ChatGPTAuthStore(profile=profile), port=port, open_browser=browser,
+                       enable_plan_usage=enable_plan_usage, announce=typer.echo)
         typer.echo(json.dumps(status))
         if not status["plan_usage_enabled"]:
-            typer.echo("Signed in, but plan usage is disabled. Enable it before running analysis.")
-        typer.echo(f"Using ChatGPT plan. Manage usage: {USAGE_URL}")
+            typer.echo("Signed in, but plan usage is disabled. Run: tradingagents auth login chatgpt_plan --enable-plan-usage")
+        else:
+            typer.echo(f"Using ChatGPT plan. Manage usage: {USAGE_URL}")
     except (SubscriptionError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None

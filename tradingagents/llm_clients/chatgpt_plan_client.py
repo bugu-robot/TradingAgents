@@ -29,10 +29,30 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 from .base_client import BaseLLMClient
 from .chatgpt_plan_auth import RESOURCE, ChatGPTAuthStore
-from .subscription_errors import SubscriptionError, response_error
+from .subscription_errors import SubscriptionError, redact, response_error
 
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 _NAMESPACE = "tradingagents"
+
+
+def _without_schema_defaults(schema: dict) -> dict:
+    """Strict Responses schemas require explicit values, including nullable fields.
+
+    Keep the upstream tool/model defaults in Python, rather than forwarding
+    schema annotations that aren't needed by constrained generation.
+    """
+    schema = deepcopy(schema)
+    schema.pop("default", None)
+    for key in ("properties", "$defs", "definitions", "patternProperties"):
+        if isinstance(schema.get(key), dict):
+            schema[key] = {name: _without_schema_defaults(value) for name, value in schema[key].items()}
+    for key in ("items", "additionalProperties"):
+        if isinstance(schema.get(key), dict):
+            schema[key] = _without_schema_defaults(schema[key])
+    for key in ("anyOf", "oneOf", "allOf", "prefixItems"):
+        if isinstance(schema.get(key), list):
+            schema[key] = [_without_schema_defaults(value) for value in schema[key]]
+    return schema
 
 
 def _text(content: Any) -> str:
@@ -121,7 +141,7 @@ def _events(response):
 
 
 def _completed_response(response, access_token: str) -> dict:
-    request_id = response.headers.get("x-request-id")
+    request_id = redact(response.headers.get("x-request-id"), (access_token,))
     retry_after = _retry_after(response.headers.get("retry-after"))
     if response.status_code != 200:
         try:
@@ -215,6 +235,7 @@ class ChatGPTPlanChatModel(BaseChatModel):
             if converted.get("type") != "function" or "function" not in converted:
                 raise ValueError("ChatGPT plan supports locally executed function tools only.")
             function = converted["function"]
+            function["parameters"] = _without_schema_defaults(function["parameters"])
             if not _TOOL_NAME.fullmatch(function["name"]):
                 raise ValueError("Function names must follow Responses naming constraints.")
             definitions.append({"type": "function", **function})
@@ -240,7 +261,7 @@ class ChatGPTPlanChatModel(BaseChatModel):
             raise NotImplementedError("ChatGPT plan structured output uses strict native json_schema.")
         definition = convert_to_openai_tool(schema, strict=True)["function"]
         structured = self.bind(text={"format": {"type": "json_schema", "name": definition["name"],
-                                               "schema": definition["parameters"], "strict": True}})
+                                               "schema": _without_schema_defaults(definition["parameters"]), "strict": True}})
 
         def parse(message):
             if message.tool_calls:

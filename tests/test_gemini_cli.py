@@ -54,7 +54,7 @@ def test_official_flags_and_version_probe_is_noninteractive(monkeypatch):
     def run(command, **kwargs):
         calls.append((command, kwargs))
         return SimpleNamespace(returncode=0, stdout="0.62.0\n" if command[-1] == "--version" else
-                               "--prompt --output-format --model --skip-trust --approval-mode")
+                               "--prompt --output-format --model --skip-trust --approval-mode --extensions --allowed-mcp-server-names")
 
     monkeypatch.setattr(cli.subprocess, "run", run)
     assert cli._probe_cli("/probe/gemini") == "0.62.0"
@@ -116,10 +116,13 @@ def test_headless_invoke_isolated_settings_stdin_history_no_api_fallback(model, 
         assert all(key not in env for key in cli._BILLING_ENV)
         assert env["CI"] == env["NO_BROWSER"] == "true"
         assert settings["tools"]["core"] == [] and settings["hooksConfig"]["enabled"] is False
-        assert settings["admin"]["mcp"]["enabled"] is False
+        assert settings["mcp"]["serverCommand"] == ""
+        assert command[command.index("--extensions") + 1] == "none"
+        assert command[command.index("--allowed-mcp-server-names") + 1] == root.name
+        assert settings["billing"]["overageStrategy"] == "never"
         assert settings["security"]["auth"]["enforcedType"] == "oauth-personal"
         assert (root / ".gemini" / ".env").read_text() == ""
-        assert Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).is_file()
+        assert json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text()) == {}
         return json.dumps({"response": "Deep review", "stats": {"tools": {"totalCalls": 0}}}), "ignored secret diagnostic", 0
 
     monkeypatch.setattr(cli, "_run_process", run)

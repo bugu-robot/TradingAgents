@@ -51,7 +51,9 @@ class SubscriptionError(RuntimeError):
 
 _QUOTA_CODES = {"subscription_sharing_usage_limit_exceeded", "insufficient_quota"}
 _AUTH_CODES = {"subscription_sharing_invalid_user", "chatpass_v2_scope_not_authorized",
-               "chatpass_v2_invalid_authorization_context", "invalid_grant", "invalid_client"}
+               "chatpass_v2_invalid_authorization_context", "invalid_grant", "invalid_client",
+               "invalid_refresh_token", "token_expired", "refresh_token_expired",
+               "refresh_token_invalidated", "refresh_token_reused"}
 
 
 def response_error(body: Any, *, status: int | None = None,

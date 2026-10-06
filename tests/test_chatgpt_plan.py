@@ -164,11 +164,12 @@ def test_rate_limit_retries_are_bounded(model, posted, monkeypatch):
 
 def test_admission_auth_errors_are_redacted(model, posted):
     _, outputs = posted
-    outputs.append(Response(status=401, body={"detail": "Bearer access-secret", "access_token": "access-secret"}))
+    outputs.append(Response(status=401, body={"detail": "Bearer access-secret", "access_token": "access-secret"},
+                            headers={"x-request-id": "access-secret"}))
     with pytest.raises(SubscriptionError) as error:
         model.invoke("hello")
     assert error.value.kind == "auth"
-    assert "access-secret" not in str(error.value) + json.dumps(error.value.details)
+    assert "access-secret" not in str(error.value) + json.dumps(error.value.details) + error.value.request_id
 
 
 def test_transport_timeout_is_safe(model, monkeypatch):

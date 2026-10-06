@@ -61,6 +61,36 @@ def test_pending_registration_cannot_replace_existing_account(store):
     assert store.read() == record
 
 
+def test_reconsent_only_after_explicit_enable_plan_usage(store):
+    connect(store, scopes=["openid", "profile", "email"])
+    plain, _ = auth.authorization_parameters(store, "http://127.0.0.1:1455/auth/callback")
+    consent, _ = auth.authorization_parameters(store, "http://127.0.0.1:1455/auth/callback", enable_plan_usage=True)
+    assert "prompt" not in plain and consent["prompt"] == "consent"
+    assert "force_reconsent" not in consent and consent["client_id"] == "oaiapp_a"
+
+
+@pytest.mark.parametrize("status,confirmed", [(200, True), (503, False)])
+def test_logout_revoke_then_clear_tokens_and_keep_registration(store, monkeypatch, status, confirmed):
+    record = connect(store)
+    calls = []
+    from .test_chatgpt_plan import Response
+
+    monkeypatch.setattr(auth, "_get_json", lambda *a: {"revocation_endpoint": auth.AUTH_ORIGIN + "/oauth/revoke"})
+    monkeypatch.setattr(auth.time, "sleep", lambda *a: None)
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        assert store.read()["refresh_token"] == record["refresh_token"]
+        return Response(status=status)
+
+    monkeypatch.setattr(auth.requests, "post", post)
+    assert store.logout() is confirmed
+    assert store.read()["client_id"] == record["client_id"]
+    assert "access_token" not in store.read() and "refresh_token" not in store.read()
+    assert calls[0][1]["data"]["token_type_hint"] == "refresh_token"
+    assert len(calls) == (1 if confirmed else 3)
+
+
 @pytest.mark.parametrize("overrides", [
     {"scopes": ["openid"]}, {"client_id": "dynamic_agent_client"},
     {"issuer": "https://evil.invalid"}, {"subject": ""},

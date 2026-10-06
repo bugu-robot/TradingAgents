@@ -118,6 +118,20 @@ def test_synthetic_langchain_history_is_converted():
     assert inputs[1]["namespace"] == "tradingagents" and inputs[2]["type"] == "function_call_output"
 
 
+def test_upstream_optional_schema_fields_remain_nullable_and_required(model, posted):
+    from tradingagents.agents.schemas import TraderProposal
+
+    calls, outputs = posted
+    outputs.append(Response([completed(json.dumps({"action": "Hold", "reasoning": "Limited evidence",
+                                                 "entry_price": None, "stop_loss": None, "position_sizing": None}))]))
+    parsed = model.with_structured_output(TraderProposal).invoke("Propose a trade")
+    schema = calls[0][1]["json"]["text"]["format"]["schema"]
+    assert parsed.entry_price is None
+    assert "entry_price" in schema["required"]
+    assert "default" not in schema["properties"]["entry_price"]
+    assert {part["type"] for part in schema["properties"]["entry_price"]["anyOf"]} == {"number", "null"}
+
+
 def test_quota_error_does_not_trigger_agent_freetext_fallback(model, posted):
     calls, outputs = posted
     outputs.append(Response([{"type": "response.failed", "response": {"error": {
@@ -162,6 +176,8 @@ def test_real_market_analyst_stock_indicator_snapshot_and_final_report(model, po
     for definition in calls[0][1]["json"]["tools"][0]["tools"]:
         assert "symbol" not in definition["parameters"]["properties"]
         assert "trade_date" not in definition["parameters"]["properties"]
+        for property_ in definition["parameters"]["properties"].values():
+            assert "default" not in property_
 
 
 def test_market_analyst_round_budget_uses_existing_freetext_wrapup(model, posted, monkeypatch):
