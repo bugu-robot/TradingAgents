@@ -4,58 +4,48 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 
 - Fork: `bugu-robot/TradingAgents`; upstream: `TauricResearch/TradingAgents`.
 - Baseline: TradingAgents **v0.6.0**, `1394a3f72aa4393e1a98f51b382434c4b4c2d972`.
-- Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), unmerged.
-- PR description updated to ChatGPT Plus / Antigravity Google AI Pro target,
-  current activation blocker, offline results and deferred live acceptance.
-- Latest published checkpoint before this update: `d6865f15f2e82538110f3d21c48aad453beecd59`.
+- Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), open, Draft, unmerged.
+- Latest published checkpoint before this phase: `f0f63587b1b0876c2802958aca74008db23a4dd2`.
   Resolve the current tip with `git rev-parse origin/feat/subscription-providers`.
-- Phase 0: fetched both remotes, confirmed clean worktree and baseline; no work discarded.
-- Phase 1: official documentation rechecked; official Linux `agy` **1.2.17**
-  downloaded, release SHA-512 verified, real `--version`/`--help` inspected.
-- Antigravity foundation: real-settings preflight, API/custom endpoint/policy
-  rejection, OS/keyring environment allowlist, verified CLI detection, strict JSON
-  parsing and safe error classification implemented.
-- Antigravity transport/schema: isolated scoped agent, NDJSON parser, native
-  schema plus independent JSON Schema/Pydantic validation, early action rejection,
-  bounded subprocess timeout/cancellation and terminal failure handling implemented.
-  Offline cases include real fake-executable process lifecycle tests; these
-  are not live CLI/account verification.
-- Registry/model catalog/CLI/auth/examples now use `antigravity_cli`, with
-  centralized deep-only admission and effort configuration. Gemini CLI adapter
-  and subscription tests removed; existing `google` API client preserved.
-- Final focused review passed **342 subscription offline tests**, including
-  Antigravity, ChatGPT auth/transport/tools and centralized routing.
-  Six opt-in LIVE cases replace the previous four; all remain skipped by default.
-- Focused review A1–A8 corrected: process/probe cleanup, no external schema
-  resolution, strict JSON, storage/lock ownership, terminal schema failures,
-  safe exit classification and action metadata. No open P1/P2 code finding.
-- Full fork regression: **1,605 passed, 7 integration deselected, 20 upstream
-  warnings, 101 subtests passed**. Clean v0.6.0 baseline: **1,263 passed,
-  1 integration deselected, the same 20 warnings, 99 subtests passed**.
-- Research/Portfolio Manager schema integration, terminal failures and real
-  mocked Market Analyst ToolNode loop passed. Ruff, diff-check, compile/import
-  and clean installed runtime/CLI import passed. No extra type checker in CI.
-- Consolidated Ubuntu pinned-install, official local OpenAI transfer / Google
-  URL-code sign-in, status gates, six live smokes and all-node AAPL Markdown/HTML
-  acceptance commands completed in VERIFICATION.md. Deferred behind the blocker.
+- Fetched origin/upstream and confirmed clean starting state, existing PR and
+  v0.6.0 baseline; no work discarded and no main/upstream mutation.
+- Current official Google headless/install/credits/models/permissions/agent
+  documentation rechecked. Reviewed native Linux `agy` version remains **1.2.17**.
+- Corrected unconditional authentication blocker: real safe configuration and
+  binary admission permits documented cached-account execution. CLI owns secure
+  credentials/refresh; actual auth failures remain terminal. No token reading,
+  invented Pro-attestation API or speculative account prompt.
+- Catalog preflight is separate from inference. Public `agy models` discovery
+  requests no model turn. Safe syntax plus fresh catalog membership admits
+  Gemini, Claude and other returned families; unknown/custom IDs fail closed.
+- Stream input now follows official stdin-first behavior. Init must validate
+  isolated cwd, exact model/agent/schema, strict permissions and empty tools
+  before accepting terminal SUCCESS/exit 0. Action metadata remains rejected.
+- API/provider/Vertex/ADC/custom routing, credits overage, policy/customizations
+  and child environment isolation remain enforced. No global settings changed.
+- Targeted correction tests: **254 passed** (Antigravity + routing), Ruff on
+  changed Python files and `git diff --check` passed.
+- Independent interactive tier model/effort UX, live evidence commands,
+  final focused review and full regression rerun are the next phase.
+- Previous checkpoint results, **not rerun counts for this correction**:
+  full fork 1,605 passed / 7 integration deselected / 20 upstream warnings /
+  101 subtests; subscription offline 342 passed; clean v0.6.0 baseline
+  1,263 passed / 1 integration deselected / same 20 warnings / 99 subtests.
+- Six subscription LIVE cases remain opt-in; **0 executed**. All login,
+  entitlement, native real-CLI scoping/schema, quota/billing and full AAPL
+  Markdown/HTML acceptance checks remain **LIVE PENDING**.
 
 | Provider | Quick | Deep | Native TradingAgents tools | Native schema | Status |
 | --- | --- | --- | --- | --- | --- |
 | `chatgpt_plan` | Yes | Yes | Yes | Yes | Existing offline implementation retained |
-| `antigravity_cli` | No | Prepared | No | Offline native schema + validation | Activation blocked by official interface |
+| `antigravity_cli` | No | Yes | No | Offline schema + validation | Cached-account transport admitted; live pending |
 | Existing API providers | Existing behavior | Existing behavior | Existing behavior | Existing behavior | Retained |
 
-All subscription live checks and the complete AAPL run remain **LIVE PENDING**.
-Offline tests cannot prove Plus/Pro entitlement, quota, identity or actual billing.
-Next: obtain a supported official Antigravity non-inference personal Pro
-preflight, implement/review it and verify init, then the single live session.
-**Activation blocker**: reviewed 1.2.17 docs provide no supported non-inference
-headless personal Pro account preflight; `/help` is TUI-only documentation. The
-adapter always refuses inference at authentication. No speculative model probe,
-token inspection, local attestation or bypass is provided. Login cannot unlock
-it. Implement/review a future supported official preflight first, then verify
-init-before-input ordering and the complete live session. Do not ask the user to
-perform login-only tests against this blocked checkpoint.
+No separate machine-readable Pro endpoint is required for documented cached
+execution. Catalog presence/local preflight is not plan entitlement evidence.
+Final acceptance must record selected ChatGPT model, selected Antigravity model
+and effort, successful headless/schema requests, official interactive `/usage`
+plan/quota after requests, no billed routing and `useG1Credits=false`.
 
 Read [DESIGN.md](DESIGN.md), [DECISIONS.md](DECISIONS.md),
 [VERIFICATION.md](VERIFICATION.md) and [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)

@@ -57,14 +57,36 @@ Sanitize the child environment, including newer ADC/gateway/agent overrides.
 Require tool-free agent configuration and reject tools, subagents or side effects
 in stream metadata. Prompts alone are insufficient isolation.
 
-Activation requires supported non-inference CLI-owned personal Pro evidence and
-a zero-tool, strict, isolated init **before writing stdin**. Final reference
-review found that 1.2.17 documents `/help` as a TUI panel, not a headless plan
-preflight. Authentication admission is therefore unconditionally blocked before
-inference. No speculative slash prompt, local attestation or bypass flag exists.
-The schema/transport is prepared and tested offline, not usable as a live Pro
-provider. Implement/review a future official account preflight first; init
-ordering is a second live compatibility gate.
+Admission combines real configuration checks, the reviewed executable, an
+allowlisted child environment, credits-overage off and an isolated zero-tool
+agent. The official CLI uses its cached account sign-in; an unauthenticated
+noninteractive request returns an authentication-required error. Local preflight
+does not prove login or Google AI Pro entitlement. No separate account-attestation
+endpoint, secure-token inspection or speculative account/model prompt is needed.
+Final acceptance must record the authenticated plan/quota in official `/usage`
+after the smoke requests. Catalog presence is not entitlement evidence.
+
+The stream follows the documented stdin-first protocol. Validate the exact
+isolated cwd, selected model/agent/schema, strict permissions and empty tool list
+as soon as init arrives; reject any unexpected action or terminal status. Accept
+only a complete `SUCCESS` result after validated init and exit 0. The protocol
+does not promise init before stdin, so startup configuration and permissions
+provide the preventive boundary; rejecting metadata cannot undo earlier actions.
+Actual CLI scoping and init/schema compatibility remain live acceptance checks.
+
+## Independent model selection
+
+Quick and Deep model selections are independent. ChatGPT slugs come from the
+official signed-in account catalog, and Antigravity slugs come from the public
+non-inference `agy models` command. Antigravity is not restricted to Gemini:
+Claude and other families are selectable when returned by that catalog. Require
+conservative slug syntax plus current catalog membership before each inference;
+reject custom provider/model settings and unlisted IDs. Pass the exact selected
+slug using `--model`; mismatched init and unknown/unavailable models fail without
+fallback. Catalog availability changes and does not guarantee plan entitlement.
+Antigravity effort is independently selected as low, medium or high through
+`TRADINGAGENTS_ANTIGRAVITY_EFFORT`; provider/model values use existing tier env
+variables. OpenAI authentication and API-provider behavior remain unchanged.
 
 ## Structured output and failure boundaries
 

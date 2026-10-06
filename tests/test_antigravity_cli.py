@@ -179,11 +179,66 @@ def test_configured_reviewed_cli_never_sends_speculative_account_prompt(safe_hom
             return subprocess.CompletedProcess([], 0, '\n'.join(cli.REQUIRED_FLAGS), '')
         pytest.fail('no speculative CLI/model account probe')
     monkeypatch.setattr(cli, '_command', probe)
-    with pytest.raises(SubscriptionError) as exc:
-        cli.preflight('/agy')
-    assert exc.value.kind == 'eligibility' and 'opaqueSecret' not in str(exc.value)
-    assert 'Login alone cannot unlock' in str(exc.value)
+    assert cli.preflight('/agy') == ('/agy', cli.VERIFIED_VERSION)
     assert calls == [['--version'], ['--help']]
+
+
+CATALOG = ('gemini-3.1-pro-high', 'claude-sonnet-4-6-thinking', 'gpt-oss-120b')
+
+
+def test_catalog_discovery_uses_only_official_non_inference_command(safe_home, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli.shutil, 'which', lambda _: '/agy')
+    monkeypatch.setattr(cli, 'preflight', lambda *a: pytest.fail('catalog must not call inference preflight'))
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no model request'))
+    def probe(exe, args, **kwargs):
+        calls.append(args)
+        output = {('--version',): cli.VERIFIED_VERSION, ('--help',): '\n'.join(cli.REQUIRED_FLAGS),
+                  ('models',): '\n'.join(f'{slug}\tSupported model' for slug in CATALOG)}[tuple(args)]
+        return subprocess.CompletedProcess(args, 0, output, '')
+    monkeypatch.setattr(cli, '_command', probe)
+    options = cli.model_options()
+    assert [slug for _, slug in options] == list(CATALOG)
+    assert calls == [['--version'], ['--help'], ['models']]
+    assert all('verify plan access' in label for label, _ in options)
+
+
+@pytest.mark.parametrize('stdout', ['', '   \n', 'model-without-label', '../custom Label',
+                                  '--model Label', 'gemini-pro Label\ngemini-pro Duplicate',
+                                  'gemini-pro Label\ninvalid/id Label', 'gemini-pro \x1b[31mLabel'])
+def test_unreadable_or_unsafe_catalog_is_terminal(safe_home, monkeypatch, stdout):
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], 0, stdout, ''))
+    with pytest.raises(SubscriptionError) as exc:
+        cli._catalog_models('/agy')
+    assert exc.value.kind == 'malformed_output'
+
+
+@pytest.mark.parametrize('slug', CATALOG + ('future-family-v2.1', 'other_model-3'))
+def test_safe_slug_is_independent_of_model_family(slug):
+    assert cli._valid_model(slug)
+
+
+@pytest.mark.parametrize('slug', ['', ' auto', 'model\n--provider=gemini', '-model', 'model-',
+                                'model..id', 'custom/model', 'provider:model', 'MODEL', '$(id)',
+                                '`id`', 'x' * 129, None, 123])
+def test_unsafe_or_custom_api_slug_rejected(slug):
+    assert not cli._valid_model(slug)
+
+
+def test_catalog_auth_error_is_not_plan_entitlement_evidence(safe_home, monkeypatch):
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess(
+        [], 1, '', 'authentication required opaque-secret'))
+    with pytest.raises(SubscriptionError) as exc:
+        cli._catalog_models('/agy')
+    assert exc.value.kind == 'auth' and 'opaque-secret' not in str(exc.value)
+
+
+def test_catalog_preflight_rejects_billed_configuration_before_cli(safe_home, monkeypatch):
+    write_settings(safe_home, modelProvider='gemini')
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: pytest.fail('no catalog child'))
+    with pytest.raises(SubscriptionError) as exc:
+        cli.model_options()
+    assert exc.value.kind == 'auth'
 
 
 def result(response='訂閱推理完成', **overrides):
@@ -307,16 +362,16 @@ def fake_executable(tmp_path, script):
     return str(p)
 
 
-def native_script(answer='"訂閱推理完成"', *, init_overrides=None, extra=''):
+def native_script(answer='"訂閱推理完成"', *, init_overrides=None, extra='', input_first=False):
     return '''import json, os, sys
 args=sys.argv[1:]
 def option(flag): return args[args.index(flag)+1] if flag in args else None
 schema=json.loads(option('--json-schema')) if option('--json-schema') else None
 init={'cwd':os.getcwd(),'model':option('--model'),'agent':option('--agent'),'tools':[],'permission_mode':'strict','json_schema':schema}
 init.update(''' + repr(init_overrides or {}) + ''')
+''' + ("line=sys.stdin.readline()\nassert json.loads(line)['event']=='user'\n" if input_first else '') + '''
 print(json.dumps({'event':'init','conversation_id':'conversation-1','init':init}),flush=True)
-line=sys.stdin.readline()
-assert json.loads(line)['event']=='user'
+''' + ("line=sys.stdin.readline()\nassert json.loads(line)['event']=='user'\n" if not input_first else '') + '''
 answer=''' + answer + '''
 body={'conversation_id':'conversation-1','status':'SUCCESS','response':json.dumps(answer,ensure_ascii=False) if schema else answer,'num_turns':1,'usage':{}}
 if schema: body.update(structured_output=answer,json_schema=schema)
@@ -325,10 +380,31 @@ print(json.dumps({'event':'result','result':body},ensure_ascii=False),flush=True
 '''
 
 
+@pytest.mark.parametrize('slug', CATALOG)
+def test_complete_admission_catalog_and_stream_without_auth_attestation(safe_home, tmp_path, slug):
+    calls = tmp_path / 'commands.jsonl'
+    probes = '''import json, sys
+with open(''' + repr(str(calls)) + ''', 'a') as log: log.write(json.dumps(sys.argv[1:]) + '\\n')
+if sys.argv[1:] == ['--version']:
+ print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
+if sys.argv[1:] == ['--help']:
+ print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
+if sys.argv[1:] == ['models']:
+ print(''' + repr('\n'.join(f'{s}\tSupported model' for s in CATALOG)) + '''); sys.exit(0)
+'''
+    executable = fake_executable(tmp_path, probes + native_script(input_first=True))
+    model = cli.AntigravityCLIChatModel(model_name=slug, executable=executable, max_retries=0, timeout=2)
+    assert model.invoke('Supplied evidence').response_metadata['model_name'] == slug
+    invocations = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert invocations[:3] == [['--version'], ['--help'], ['models']]
+    assert len(invocations) == 4 and invocations[3][invocations[3].index('--model') + 1] == slug
+
+
 @pytest.fixture
 def model(safe_home, tmp_path, monkeypatch):
     executable = fake_executable(tmp_path, native_script())
     monkeypatch.setattr(cli, 'preflight', lambda *a: (executable, cli.VERIFIED_VERSION))
+    monkeypatch.setattr(cli, '_catalog_models', lambda *a: list(CATALOG))
     return cli.AntigravityCLIChatModel(model_name='gemini-3.1-pro-high', max_retries=0, timeout=2)
 
 
@@ -403,24 +479,51 @@ def test_workspace_agent_and_environment_are_private_and_reasoning_only(model, m
     assert seen and all(not p.exists() for p in seen)
 
 
-def test_unsafe_init_kills_child_without_sending_prompt(model, tmp_path, monkeypatch):
-    marker = tmp_path / 'prompt-was-received'
-    script = native_script(init_overrides={'tools': ['run_command']}, extra='open('+repr(str(marker))+', "w").write("bad")')
+def test_unsafe_init_rejected_even_when_input_precedes_init(model, tmp_path, monkeypatch):
+    script = native_script(init_overrides={'tools': ['run_command']}, input_first=True)
     exe = fake_executable(tmp_path, script)
     monkeypatch.setattr(cli, 'preflight', lambda *a: (exe, cli.VERIFIED_VERSION))
     with pytest.raises(SubscriptionError) as exc:
-        model.invoke('must not be submitted')
-    assert exc.value.kind == 'capability' and not marker.exists()
+        model.invoke('supplied evidence only')
+    assert exc.value.kind == 'capability'
 
 
-def test_init_not_emitted_until_prompt_fails_before_inference(model, tmp_path, monkeypatch):
-    marker = tmp_path / 'received'
-    exe = fake_executable(tmp_path, 'import sys\nsys.stdin.readline()\nopen('+repr(str(marker))+', "w").write("bad")\n')
+def test_documented_input_before_init_accepts_only_validated_completion(model, tmp_path, monkeypatch):
+    exe = fake_executable(tmp_path, native_script(input_first=True))
     monkeypatch.setattr(cli, 'preflight', lambda *a: (exe, cli.VERIFIED_VERSION))
-    model.timeout = .15
+    assert model.invoke('supplied evidence only').content == '訂閱推理完成'
+
+
+@pytest.mark.parametrize('slug', CATALOG)
+@pytest.mark.parametrize('effort', ['low', 'medium', 'high'])
+def test_exact_listed_model_and_effort_passed_without_fallback(model, monkeypatch, slug, effort):
+    model.model_name, model.effort = slug, effort
+    def run(command, prompt, **kwargs):
+        assert command[command.index('--model') + 1] == slug
+        assert command[command.index('--effort') + 1] == effort
+        assert kwargs['stream'].model == slug
+        return result()
+    monkeypatch.setattr(cli, '_run_process', run)
+    answer = model.invoke('Supplied evidence')
+    assert answer.response_metadata['model_name'] == slug and answer.response_metadata['effort'] == effort
+
+
+def test_unlisted_safe_slug_fails_before_inference_without_fallback(model, monkeypatch):
+    model.model_name = 'unknown-custom-model'
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no inference for unlisted model'))
+    with pytest.raises(SubscriptionError, match='not in the current official'):
+        model.invoke('blocked')
+
+
+def test_inference_rechecks_subscription_settings_after_catalog(model, safe_home, monkeypatch):
+    def catalog(*args):
+        write_settings(safe_home, useG1Credits=True)
+        return list(CATALOG)
+    monkeypatch.setattr(cli, '_catalog_models', catalog)
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no unsafe inference'))
     with pytest.raises(SubscriptionError) as exc:
-        model.invoke('must not be submitted')
-    assert exc.value.kind == 'timeout' and not marker.exists()
+        model.invoke('blocked')
+    assert exc.value.kind == 'policy'
 
 
 def test_timeout_terminates_and_reaps_child(model, tmp_path, monkeypatch):

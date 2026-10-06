@@ -11,7 +11,8 @@ No user sign-in or model inference was used for this review.
 | SSH / cached auth | [Install/auth](https://www.antigravity.google/docs/cli/install/) | CLI prints a URL, local browser returns a code pasted into SSH; CLI/keyring owns credentials. |
 | Headless / output | [Headless](https://www.antigravity.google/docs/cli/headless/) | Print mode; JSON completion envelope and NDJSON init/step/result events. |
 | Schema | [Headless schema](https://www.antigravity.google/docs/cli/headless/#structured-output-with-a-schema) | `--json-schema`; enforced schema and `structured_output` in terminal result; independently validate. |
-| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent) | `agy models`, explicit slug, `--effort`; unknown selection fails rather than silently switching. |
+| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent), [Models](https://www.antigravity.google/docs/models/) | `agy models` is non-inference discovery; allow all safely named catalog families, including Claude. Independent exact slug and low/medium/high effort; unknown selection fails rather than switching. |
+| Authentication / quota evidence | [Headless cached credentials](https://www.antigravity.google/docs/cli/headless/), [Official /usage](https://www.antigravity.google/docs/cli/commands/usage) | Headless uses cached account credentials or exits authentication-required. Catalog/local preflight is not Pro entitlement proof; record interactive plan/quota after live smokes. |
 | Credits overage | [Credits](https://www.antigravity.google/docs/cli/credits/), [Plans](https://www.antigravity.google/docs/plans/) | `useG1Credits=false`; no purchased/promotional overage fallback. |
 | API / custom endpoint | [Install API mode](https://www.antigravity.google/docs/cli/install/#using-a-gemini-api-key) | `modelProvider=gemini` plus GEMINI_API_KEY routes to API; reject this config before inference. GOOGLE_GEMINI_BASE_URL is a routing override. |
 | Settings | [Settings](https://www.antigravity.google/docs/settings?tab=cli), [Reference](https://www.antigravity.google/docs/cli/reference/) | Inspect real `~/.gemini/antigravity-cli/settings.json`; no global modifications or administrator-policy substitution. |
@@ -39,21 +40,36 @@ they will be excluded conservatively. This is configuration inspection, not an
 alternative transport or permission to invoke private endpoints.
 Agent inheritance/exclusion fields recognized by static binary inspection are
 not claimed runtime verified. Scoped agent files in offline tests use those
-fields, but any future activation must verify their effective exclusion through
-strict zero-tool init before supplying a prompt; the current auth gate blocks.
+fields, but live acceptance must verify their effective exclusion through strict
+zero-tool init before accepting a result. Input follows the documented stdin-first
+protocol; configuration and tool/permission restrictions apply before startup.
 
-## Activation blocker found in final review
+## Cached-account admission correction — 2026-10-06
 
 [CLI reference](https://www.antigravity.google/docs/cli/reference/) documents
 `/help` as a TUI commands/shortcuts panel, not a supported non-inference headless
 account/plan report. [Status-line metadata](https://www.antigravity.google/docs/cli/statusline/)
-includes interactive `plan_tier`, but does not establish a headless auth-check
-interface. Headless init docs do not promise positive Pro identity or output
-before the first stdin prompt. Do not turn a model-generated report into auth
-evidence. The adapter therefore blocks at authentication, without submitting
-`/help` or any model prompt. Google activation requires an official account
-preflight followed by implementation/review, then real init/live verification.
-Login alone is insufficient; no bypass/local attestation is provided.
+includes interactive `plan_tier`, but does not establish a separate headless
+attestation endpoint. That absence is not a reason to block documented execution:
+the current headless guide explicitly supports cached credentials and terminal
+auth/status/error metadata. Use the real settings/binary preflight, default
+account route, isolated scoped agent and sanitized environment; let the official
+CLI authenticate/refresh from its own secure store during the actual request.
+Do not read tokens or trust model-authored identity reports.
+
+Catalog discovery independently executes `agy models`, without model inference.
+Its documented rows contain slug then label; parse safe slugs, discard raw labels,
+reject malformed/duplicate catalogs and require current membership at invocation.
+There is no Gemini-family allowlist. GPT choices remain independent in the
+ChatGPT account catalog. Availability changes; neither catalog proves the
+subscription entitlement of the selected model.
+
+Submit input according to the official programmatic example, then validate init
+before accepting the terminal SUCCESS result. Exact selected model, scoped
+agent, private cwd, empty tools, strict permissions and schema must match. Reject
+autonomous execution metadata and any error; never downgrade or switch to API
+billing. Real init/scoping/schema compatibility and Google AI Pro `/usage` quota
+evidence are still LIVE PENDING. No unconditional authentication blocker remains.
 
 ## OpenAI recheck
 

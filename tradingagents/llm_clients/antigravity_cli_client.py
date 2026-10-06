@@ -237,42 +237,54 @@ def detect_cli(executable: str | None = None, cancellation: threading.Event | No
     return resolved, VERIFIED_VERSION
 
 
-def preflight(executable: str | None = None, cancellation: threading.Event | None = None) -> tuple[str, str]:
+def catalog_preflight(executable: str | None = None, cancellation: threading.Event | None = None) -> tuple[str, str]:
+    """Read-only configuration/binary checks, without an inference/auth prompt."""
     _configuration_preflight()
-    cli = detect_cli(executable, cancellation)
-    _authentication_preflight(cli[0], cancellation)
-    return cli
+    return detect_cli(executable, cancellation)
 
 
-def _authentication_preflight(executable: str, cancellation: threading.Event | None = None) -> None:
-    """No speculative /help prompt or token inspection to establish Pro.
+def preflight(executable: str | None = None, cancellation: threading.Event | None = None) -> tuple[str, str]:
+    """Admit only the reviewed account-based CLI configuration.
 
-    Reviewed official 1.2.17 docs expose a TUI help panel and interactive status
-    metadata, not a supported non-inference headless subscription/account check.
-    A model-authored report or local attestation is not authentication evidence.
-    Keep the transport disabled until an official preflight can be implemented.
+    The CLI owns cached sign-in and refresh. Its documented terminal errors
+    verify authentication during the actual request; this local preflight does
+    not attest to login, Google AI Pro entitlement or remaining quota. Acceptance
+    additionally requires the official interactive /usage panel. Never inspect
+    secure tokens, invent an account probe or submit a speculative model turn.
     """
-    if cancellation is not None and cancellation.is_set():
-        raise _failure("Antigravity preflight cancelled.", "cancelled")
-    raise _failure("Antigravity inference is disabled: the reviewed official CLI 1.2.17 interface "
-                   "does not provide a supported non-inference Google AI Pro account preflight. "
-                   "Login alone cannot unlock this adapter. See STATUS.md; no model request was sent.", "eligibility")
+    _configuration_preflight()
+    return detect_cli(executable, cancellation)
 
 
-def model_options():
-    """Official CLI catalog, not a claim of Google AI Pro model entitlement."""
-    executable, _ = preflight()
-    result = _command(executable, ["models"], timeout=30)
+def _catalog_models(executable: str, cancellation: threading.Event | None = None) -> list[str]:
+    # Recheck actual settings before the catalog child too. No cached catalog:
+    # availability changes and the exact slug must still be present at invocation.
+    _configuration_preflight()
+    result = _command(executable, ["models"], timeout=30, cancellation=cancellation)
     if result.returncode:
         raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
-    options = []
+    models = []
     for line in result.stdout.splitlines():
-        match = re.fullmatch(r"\s*(gemini-[a-z0-9][a-z0-9.-]*)\s+(.+?)\s*", line)
-        if match:
-            options.append((f"Antigravity {match[1]} (CLI catalog; verify plan access)", match[1]))
-    if not options:
-        raise _failure("Antigravity returned no readable Gemini model catalog. Authenticate interactively and check agy models.", "auth")
-    return options
+        if not line.strip():
+            continue
+        # The documented public command prints a slug followed by its label.
+        # Labels are untrusted diagnostics: neither display nor persist them.
+        match = re.fullmatch(r"\s*(\S+)\s+[^\x00-\x1f\x7f]+\s*", line)
+        if not match or not _valid_model(match[1]) or match[1] in models or len(models) >= 1024:
+            raise _failure("Antigravity returned an unrecognized model catalog. Check the official agy models output; "
+                           "no model request or fallback was attempted.", "malformed_output")
+        models.append(match[1])
+    if not models:
+        raise _failure("Antigravity returned an empty model catalog. Sign in interactively and check agy models; "
+                       "catalog presence alone does not prove plan entitlement.", "malformed_output")
+    return models
+
+
+def model_options(executable: str | None = None):
+    """Official non-inference catalog; not an authentication/plan attestation."""
+    executable, _ = catalog_preflight(executable)
+    return [(f"Antigravity {slug} (CLI catalog; verify plan access)", slug)
+            for slug in _catalog_models(executable)]
 
 
 def _conversation(messages) -> tuple[str, str]:
@@ -480,9 +492,11 @@ def _run_process(command: list[str], prompt: str, *, cwd: str, env: dict,
                 os.set_blocking(pipe.fileno(), False)
             selector.register(process.stdout, selectors.EVENT_READ, "stdout")
             selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-            # Do not submit a prompt until the CLI attests to the isolated
-            # tool-free init. If a version delays init until input, fail before
-            # inference instead of guessing or sending an unguarded request.
+            # Follow documented stdin-first operation. Configuration, environment
+            # and the scoped zero-tool agent constrain startup. Validate init as
+            # soon as received, and accept no result without that validated init.
+            # The public protocol does not promise init before reading stdin.
+            selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
             while selector.get_map():
                 if cancellation.is_set():
                     raise _failure("Antigravity request cancelled.", "cancelled")
@@ -495,7 +509,12 @@ def _run_process(command: list[str], prompt: str, *, cwd: str, env: dict,
                         try:
                             offset += os.write(pipe.fileno(), input_[offset:offset + 8192])
                         except BrokenPipeError:
-                            raise _failure("Antigravity closed its input before receiving the conversation.", "malformed_output") from None
+                            # Still drain stderr/terminal errors: an unauthenticated
+                            # CLI may close stdin immediately. Preserve its safe
+                            # authentication classification instead of a pipe error.
+                            selector.unregister(pipe)
+                            pipe.close()
+                            continue
                         if offset == len(input_):
                             selector.unregister(pipe)
                             pipe.close()
@@ -515,8 +534,6 @@ def _run_process(command: list[str], prompt: str, *, cwd: str, env: dict,
                             line, pending = pending.split(b"\n", 1)
                             if line.strip():
                                 stream.feed(line)
-                                if stream.identity is not None and offset == 0 and process.stdin not in [k.fileobj for k in selector.get_map().values()]:
-                                    selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
             if pending.strip():
                 stream.feed(pending)
             code = _wait_for_exit(process, deadline, cancellation)
@@ -574,11 +591,14 @@ class AntigravityCLIChatModel(BaseChatModel):
         if schema is not None:
             schema = _validated_schema(schema)  # Also protect direct bind(native_schema=...) callers.
         if not _valid_model(self.model_name) or self.effort not in {None, "low", "medium", "high"}:
-            raise ValueError("Choose a Gemini slug from agy models and a documented low/medium/high effort.")
+            raise ValueError("Choose a safe slug from agy models and a documented low/medium/high effort.")
         if not math.isfinite(self.timeout):
             raise ValueError("Antigravity timeout must be finite.")
-        executable, version = preflight(self.executable, cancellation)
         system, prompt = _conversation(messages)
+        executable, version = preflight(self.executable, cancellation)
+        if self.model_name not in _catalog_models(executable, cancellation):
+            raise _failure("The selected Antigravity model is not in the current official agy models catalog. "
+                           "Choose a listed slug; no inference or model fallback was attempted.")
         for attempt in range(self.max_retries + 1):
             # Recheck actual global settings for every retry, without editing or
             # swapping system policy files. Each attempt uses a fresh conversation.
@@ -601,7 +621,7 @@ class AntigravityCLIChatModel(BaseChatModel):
                                         timeout=self.timeout, cancellation=cancellation, stream=stream)
                     message = AIMessage(content=body["response"], response_metadata={
                         "provider": "antigravity_cli", "model_name": self.model_name, "cli_version": version,
-                        "autonomous_tools": False, "structured": schema is not None,
+                        "effort": self.effort, "autonomous_tools": False, "structured": schema is not None,
                     })
                     return ChatResult(generations=[ChatGeneration(message=message)])
                 except SubscriptionError as exc:
@@ -628,7 +648,8 @@ class AntigravityCLIChatModel(BaseChatModel):
 
 
 def _valid_model(model):
-    return isinstance(model, str) and bool(re.fullmatch(r"gemini-[a-z0-9][a-z0-9.-]{0,100}", model))
+    return (isinstance(model, str) and len(model) <= 128
+            and bool(re.fullmatch(r"[a-z][a-z0-9]*(?:[-._][a-z0-9]+)*", model)))
 
 
 def _validated_schema(specification: dict) -> dict:
@@ -669,7 +690,7 @@ class AntigravityCLIClient(BaseLLMClient):
         if set(self.kwargs) - {"max_retries", "timeout", "executable", "effort", "callbacks"}:
             raise ValueError("Antigravity cannot accept API keys, provider overrides, sampling settings or output caps.")
         if not self.validate_model():
-            raise ValueError("Choose a Gemini slug from the official agy models catalog; no auto/custom API models.")
+            raise ValueError("Choose a safe slug from the official agy models catalog; no custom API models.")
         return AntigravityCLIChatModel(model_name=self.model, **self.kwargs)
 
     def validate_model(self):

@@ -91,6 +91,7 @@ def test_antigravity_cli_key_preflight_does_not_prompt_for_google_api_key(monkey
 def test_deep_research_manager_uses_native_schema(monkeypatch):
     model = factory.create_tier_client(config(), "deep").get_llm()
     monkeypatch.setattr(antigravity_cli_client, "preflight", lambda *a: ("/agy", "1.2.17"))
+    monkeypatch.setattr(antigravity_cli_client, "_catalog_models", lambda *a: [model.model_name])
     monkeypatch.setattr(antigravity_cli_client, "_configuration_preflight", lambda: None)
     calls = []
     def run(command, prompt, **kwargs):
@@ -111,6 +112,7 @@ def test_deep_research_manager_uses_native_schema(monkeypatch):
 def test_deep_portfolio_manager_native_schema_and_terminal_failure(monkeypatch, failure):
     model = factory.create_tier_client(config(), "deep").get_llm()
     monkeypatch.setattr(antigravity_cli_client, "preflight", lambda *a: ("/agy", "1.2.17"))
+    monkeypatch.setattr(antigravity_cli_client, "_catalog_models", lambda *a: [model.model_name])
     monkeypatch.setattr(antigravity_cli_client, "_configuration_preflight", lambda: None)
     calls = []
     def run(command, prompt, **kwargs):

@@ -106,3 +106,28 @@ reviewed 1.2.17 adapter before inference. The prepared reasoning/schema transpor
 remains offline tested; Google activation needs a supported official preflight
 and another code review, then the single live session. User login cannot fix
 this interface blocker. This is an explicit limitation, not a working feature.
+
+## 2026-10-06 — Admit documented cached-account execution, not invented attestation
+
+Supersedes the earlier positive-Pro/pre-input and unconditional-authentication
+gate decisions above. Current official headless docs explicitly support cached
+account credentials and authentication-required errors without a terminal.
+Require real safe settings, no API/provider/Vertex/ADC/custom routing, credits
+off, sanitized environment, a scoped zero-tool agent, validated stream init and
+terminal SUCCESS. Do not invent a separate machine-readable Pro attestation,
+inspect Google tokens or send a speculative account prompt. Submit stdin as
+documented; validate init before accepting any response rather than require an
+undocumented init-before-input ordering. Official interactive /usage evidence
+after live smokes is mandatory to accept actual Google AI Pro entitlement/quota.
+Offline success does not prove live credentials, plan or billing.
+
+## 2026-10-06 — Discover independent account catalogs and pin exact model slugs
+
+Separate catalog preflight from inference admission. `agy models` is the public
+non-inference Antigravity catalog command; never consume a model turn to discover
+models. Accept any catalog-listed family with conservative safe slug syntax,
+including Gemini, Claude and future families. Reject unlisted/custom API IDs;
+refresh catalog membership before inference and pin `--model` without fallback.
+ChatGPT Quick models independently come from its signed-in account catalog.
+Existing Quick/Deep provider/model env variables and Antigravity low/medium/high
+effort map directly to the v0.6.0 factory; no hybrid router is introduced.
