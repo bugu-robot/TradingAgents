@@ -89,5 +89,5 @@ def response_error(body: Any, *, status: int | None = None,
     else:
         kind, message = "request", "ChatGPT plan request failed; inspect the redacted diagnostic fields."
     return SubscriptionError(message, kind=kind, code=code, status=status,
-                             request_id=request_id, retry_after=retry_after,
+                             request_id=redact(request_id, secrets), retry_after=retry_after,
                              details=redact(body, secrets))

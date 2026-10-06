@@ -10,6 +10,7 @@ import base64
 import contextlib
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -110,8 +111,11 @@ class ChatGPTAuthStore:
         configured = directory or os.environ.get("TRADINGAGENTS_CHATGPT_AUTH_DIR")
         self.directory = Path(configured or Path.home() / ".config/tradingagents/chatgpt_plan")
         self.profile = profile or os.environ.get("TRADINGAGENTS_CHATGPT_PROFILE") or self.active_profile()
-        if not _PROFILE.fullmatch(self.profile) or ".." in self.profile:
-            raise ValueError("Profile labels must be 1-64 safe letters, digits, dots, underscores or hyphens.")
+        if (not isinstance(self.profile, str) or not _PROFILE.fullmatch(self.profile)
+                or ".." in self.profile or self.profile.endswith(".")
+                or self.profile.casefold() in {"active", "host"}):
+            raise ValueError("Profile labels must be 1-64 safe letters, digits, dots, underscores or hyphens; "
+                             "active, host and trailing dots are reserved.")
         self.path = self.directory / f"{self.profile}.json"
 
     def __repr__(self):
@@ -166,6 +170,8 @@ class ChatGPTAuthStore:
             expires = float(record.get("expires_at", 0))
         except (TypeError, ValueError):
             raise _auth_error("ChatGPT credential expiry is invalid; sign in again.") from None
+        if not math.isfinite(expires):
+            raise _auth_error("ChatGPT credential expiry is invalid; sign in again.")
         if expires <= time.time() + 60 and not record.get("refresh_token"):
             raise _auth_error("ChatGPT session expired and cannot be renewed; sign in again.")
         return record
@@ -180,6 +186,8 @@ class ChatGPTAuthStore:
                 earliest = float(earliest or 0)
             except (TypeError, ValueError):
                 raise _auth_error("ChatGPT renewal metadata is invalid; sign in again.") from None
+            if not math.isfinite(earliest):
+                raise _auth_error("ChatGPT renewal metadata is invalid; sign in again.")
             if earliest > time.time():
                 raise SubscriptionError("ChatGPT token renewal is not yet available; retry later.", kind="transient")
             try:
@@ -191,6 +199,9 @@ class ChatGPTAuthStore:
                 raise
             renewed = _token_record(record, token)
             _write_json(self.path, renewed)
+            # Save the rotating replacement before rejecting a revoked grant.
+            # Never send inference using scopes removed by a successful refresh.
+            self.preflight()
             return renewed["access_token"]
 
     def remember_registration(self, client_id: str) -> None:
@@ -222,7 +233,7 @@ class ChatGPTAuthStore:
         self.activate_if_enabled()
 
     def activate_if_enabled(self):
-        if DIRECT_SCOPE in self.read().get("scopes", []):
+        if {DIRECT_SCOPE, "resource.invoke"} <= set(self.read().get("scopes", [])):
             _write_json(self.directory / "active.json", {"profile": self.profile})
 
     def logout(self) -> bool:
@@ -231,33 +242,41 @@ class ChatGPTAuthStore:
             record = self.read()
             confirmed = not record.get("refresh_token")
             if not confirmed:
-                try:
-                    discovery = _get_json(DISCOVERY_URL)
-                    endpoint = _trusted_url(discovery["revocation_endpoint"])
-                    for attempt in range(3):
+                endpoint = None
+                for attempt in range(3):
+                    try:
+                        if endpoint is None:
+                            discovery = _get_json(DISCOVERY_URL)
+                            endpoint = _trusted_url(discovery["revocation_endpoint"])
                         with requests.post(endpoint, data={"token": record["refresh_token"],
                                            "token_type_hint": "refresh_token", "client_id": record["client_id"]},
                                            timeout=20, allow_redirects=False) as response:
                             confirmed = response.status_code == 200
                             if confirmed or response.status_code < 500:
                                 break
+                    except (requests.RequestException, SubscriptionError) as exc:
+                        if isinstance(exc, SubscriptionError) and not exc.retryable:
+                            break
+                    except KeyError:
+                        break
+                    if attempt < 2:
                         time.sleep(0.5 * (2 ** attempt))
-                except (requests.RequestException, KeyError, SubscriptionError):
-                    confirmed = False
             _write_json(self.path, {k: v for k, v in record.items() if k not in _TOKEN_KEYS})
             return confirmed
 
 
 def _token_record(record: dict, token: dict) -> dict:
-    if not token.get("access_token") or not token.get("refresh_token"):
+    if not all(isinstance(token.get(k), str) and token[k] for k in ("access_token", "refresh_token")):
         raise _auth_error("OpenAI did not return a complete renewable token set; sign in again.")
     try:
         lifetime = float(token["expires_in"])
     except (KeyError, TypeError, ValueError):
         raise _auth_error("OpenAI did not return a valid token lifetime.") from None
-    if lifetime <= 0 or str(token.get("token_type", "")).lower() != "bearer":
+    if not math.isfinite(lifetime) or lifetime <= 0 or str(token.get("token_type", "")).lower() != "bearer":
         raise _auth_error("OpenAI returned invalid token metadata.")
     scopes = token.get("scope")
+    if "scope" in token and not isinstance(scopes, str):
+        raise _auth_error("OpenAI returned invalid granted scopes.")
     scopes = scopes.split() if isinstance(scopes, str) else record.get("scopes", [])
     return {**record, "access_token": token["access_token"], "refresh_token": token["refresh_token"],
             "id_token": token.get("id_token") or record.get("id_token"), "token_type": "Bearer",
@@ -332,8 +351,10 @@ def parse_callback(path: str, parameters: dict) -> tuple[str, str]:
     parsed = urlparse(path)
     if parsed.path != "/auth/callback":
         raise _auth_error("Unexpected OAuth callback path.")
-    query = parse_qs(parsed.query)
-    if any(len(v) != 1 for v in query.values()) or not secrets.compare_digest(query.get("state", [""])[0], parameters["state"]):
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    if any(len(v) != 1 for v in query.values()) or not secrets.compare_digest(
+        query.get("state", [""])[0].encode(), parameters["state"].encode()
+    ):
         raise _auth_error("OAuth callback state did not match.")
     if "error" in query:
         raise _auth_error("ChatGPT authorization was declined or failed. Existing profiles were preserved.")
@@ -351,7 +372,17 @@ def parse_callback(path: str, parameters: dict) -> tuple[str, str]:
 def login(store: ChatGPTAuthStore, *, port: int = 1455, open_browser: bool = True,
           timeout: float = 300, enable_plan_usage: bool = False, announce=print) -> dict:
     """Explicit interactive step; ordinary provider invocation never calls this."""
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("OAuth login timeout must be finite and positive.")
     received = {}
+
+    class LoopbackServer(HTTPServer):
+        def get_request(self):
+            connection, address = super().get_request()
+            # HTTPServer.timeout only bounds accept(), not a peer that connects
+            # and stalls while sending headers. Bound each accepted socket too.
+            connection.settimeout(max(0.001, min(1.0, deadline - time.monotonic())))
+            return connection, address
 
     class Callback(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -365,28 +396,29 @@ def login(store: ChatGPTAuthStore, *, port: int = 1455, open_browser: bool = Tru
                     query = parse_qs(urlparse(self.path).query)
                     if query.get("state", [""])[0] == parameters["state"]:
                         received["error"] = True
-            self.send_response(status)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(body)
+            with contextlib.suppress(OSError):
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(body)
 
         def log_message(self, *args):
             pass  # Callback URLs contain the authorization code.
 
     try:
-        server = HTTPServer(("127.0.0.1", port), Callback)
+        server = LoopbackServer(("127.0.0.1", port), Callback)
     except OSError:
         raise _auth_error("Cannot bind the OAuth loopback listener. Choose a free --port.") from None
     with server:
-        server.timeout = 1
+        deadline = time.monotonic() + timeout
         redirect = f"http://127.0.0.1:{server.server_port}/auth/callback"
         parameters, verifier = authorization_parameters(store, redirect, enable_plan_usage=enable_plan_usage)
         url = AUTHORIZE_URL + "?" + urlencode(parameters)
         announce("Continue with ChatGPT: " + url)
         if open_browser:
             webbrowser.open(url)
-        deadline = time.monotonic() + timeout
         while not received and time.monotonic() < deadline:
+            server.timeout = max(0.001, min(1.0, deadline - time.monotonic()))
             server.handle_request()
         if not received:
             raise _auth_error("ChatGPT sign-in timed out; existing profiles were preserved.")

@@ -1,16 +1,20 @@
 """Offline OAuth identity, rotation and credential-isolation coverage."""
 
 import json
+import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import jwt
 import pytest
+import requests
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tradingagents.llm_clients import chatgpt_plan_auth as auth
 from tradingagents.llm_clients.subscription_errors import SubscriptionError, redact
+
+_LOOPBACK_CONNECT = socket.socket.connect
 
 
 @pytest.fixture
@@ -139,6 +143,34 @@ def test_concurrent_refresh_rotates_once_and_preserves_registration(store, monke
     assert store.read()["subject"] == "user-a"
 
 
+def test_refresh_scope_revocation_is_saved_but_never_sent_to_inference(store, monkeypatch):
+    from tradingagents.llm_clients.factory import create_llm_client
+
+    connect(store, expires_at=0)
+    monkeypatch.setattr(auth, "_token_request", lambda _: token(scope="openid profile email"))
+    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: pytest.fail("revoked grant must not reach inference"))
+    model = create_llm_client("chatgpt_plan", "account-model").get_llm()
+    with pytest.raises(SubscriptionError, match="plan-use permission"):
+        model.invoke("hello")
+    assert store.read()["refresh_token"] == "renewed-refresh"
+    assert store.read()["scopes"] == ["openid", "profile", "email"]
+
+
+@pytest.mark.parametrize("lifetime", [float("nan"), float("inf"), -1])
+def test_invalid_token_lifetime_cannot_become_an_unexpiring_connection(lifetime):
+    with pytest.raises(SubscriptionError):
+        auth._token_record({}, token(expires_in=lifetime))
+
+
+@pytest.mark.parametrize("field", ["expires_at", "earliest_refresh_at"])
+def test_nonfinite_saved_renewal_metadata_is_rejected(store, field):
+    connect(store, expires_at=0, **({field: float("inf")} if field != "expires_at" else {}))
+    if field == "expires_at":
+        connect(store, expires_at=float("nan"))
+    with pytest.raises(SubscriptionError, match="invalid"):
+        store.access_token()
+
+
 def test_temporary_refresh_failure_preserves_tokens(store, monkeypatch):
     old = connect(store, expires_at=0)
 
@@ -255,6 +287,75 @@ def test_profile_isolation_and_active_selection(store):
     second.activate()
     assert auth.ChatGPTAuthStore().profile == "second"
     assert store.read()["client_id"] == "oaiapp_a"
+
+
+@pytest.mark.parametrize("label", ["active", "host", "ACTIVE", "Host", "active.", "plus."])
+def test_profile_names_cannot_overwrite_internal_registration_metadata(store, label):
+    connect(store)
+    store.activate()
+    store.host_id()
+    before = {path.name: path.read_bytes() for path in store.directory.glob("*.json")}
+    with pytest.raises(ValueError, match="reserved"):
+        auth.ChatGPTAuthStore(profile=label)
+    assert {path.name: path.read_bytes() for path in store.directory.glob("*.json")} == before
+
+
+def test_loopback_login_deadline_survives_a_stalled_http_peer(store):
+    peers = []
+
+    def stalled_peer(message):
+        authorization = urlparse(message.split("Continue with ChatGPT: ", 1)[1])
+        redirect = urlparse(parse_qs(authorization.query)["redirect_uri"][0])
+        peer = socket.socket()
+        peers.append(peer)
+        _LOOPBACK_CONNECT(peer, ("127.0.0.1", redirect.port))
+        peer.sendall(b"GET /auth/callback HTTP/1.1\r\n")  # never finishes headers
+
+    with ThreadPoolExecutor(1) as pool:
+        future = pool.submit(auth.login, store, port=0, open_browser=False, timeout=0.2, announce=stalled_peer)
+        try:
+            with pytest.raises(SubscriptionError, match="timed out"):
+                future.result(timeout=2)
+        finally:
+            for peer in peers:
+                peer.close()
+    assert not store.status()["connected"]
+
+
+@pytest.mark.parametrize("query", ["state=%E9%8C%AF&code=c", "state=s&state=&code=c"])
+def test_callback_rejects_unicode_and_blank_duplicate_state_safely(query):
+    with pytest.raises(SubscriptionError, match="state"):
+        auth.parse_callback("/auth/callback?" + query, {"state": "s", "client_id": "oaiapp_a"})
+
+
+def test_logout_retries_network_failures_before_clearing_rotating_session(store, monkeypatch):
+    connect(store)
+    from .test_chatgpt_plan import Response
+
+    calls = []
+    monkeypatch.setattr(auth, "_get_json", lambda _: {"revocation_endpoint": auth.AUTH_ORIGIN + "/revoke"})
+    monkeypatch.setattr(auth.time, "sleep", lambda _: None)
+
+    def post(*args, **kwargs):
+        calls.append(kwargs)
+        assert store.read()["refresh_token"] == "refresh-secret"
+        if len(calls) < 3:
+            raise requests.ConnectionError("untrusted diagnostic refresh-secret")
+        return Response(status=200)
+
+    monkeypatch.setattr(auth.requests, "post", post)
+    assert store.logout() and len(calls) == 3
+    assert "refresh_token" not in store.read()
+
+
+def test_token_admission_request_id_redacts_known_code_and_refresh_token(monkeypatch):
+    from .test_chatgpt_plan import Response
+
+    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: Response(
+        status=401, body={"error": "invalid_grant"}, headers={"x-request-id": "opaque-renewal-secret"}))
+    with pytest.raises(SubscriptionError) as error:
+        auth._token_request({"grant_type": "refresh_token", "refresh_token": "opaque-renewal-secret"})
+    assert error.value.request_id == "[REDACTED]"
 
 
 @pytest.mark.parametrize("label", ["../auth", "..", "a/b", "", "a" * 65])
