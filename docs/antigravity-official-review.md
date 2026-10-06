@@ -7,11 +7,11 @@ No user sign-in or model inference was used for this review.
 | Topic | Official evidence | Implementation implication |
 | --- | --- | --- |
 | Google AI Pro | [Plans](https://www.antigravity.google/docs/plans/) | Pro has Antigravity baseline quota; real personal entitlement remains live-pending. |
-| Linux / installation | [Install](https://www.antigravity.google/docs/cli/install/) | Official native `agy`, verified Linux amd64 release **1.2.17**. |
+| Linux / installation | [Install](https://www.antigravity.google/docs/cli/install/) | Reviewed adapter pin: official native `agy` **1.2.17**. A newer stable **1.3.0** was observed/reported after the previous review; it is not adapter-reviewed and is reserved for a separate compatibility task after live acceptance. |
 | SSH / cached auth | [Install/auth](https://www.antigravity.google/docs/cli/install/) | CLI prints a URL, local browser returns a code pasted into SSH; CLI/keyring owns credentials. |
 | Headless / output | [Headless](https://www.antigravity.google/docs/cli/headless/) | Print mode; JSON completion envelope and NDJSON init/step/result events. |
 | Schema | [Headless schema](https://www.antigravity.google/docs/cli/headless/#structured-output-with-a-schema) | `--json-schema`; enforced schema and `structured_output` in terminal result; independently validate. |
-| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent), official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli) | Changelog advertises `agy models --output-format json` and stream-json; current 1.2.17 binary rejects the flag. No successful emitted model JSON envelope is available to inspect. The adapter is JSON-only and refuses human-text fallback. |
+| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent), official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli), official [issue #777](https://github.com/google-antigravity/antigravity-cli/issues/777) | `--output-format` is a global flag and must precede the subcommand: `agy --output-format json models`. Issue #777 corrects the earlier `agy models --output-format json` ordering and confirms the machine-readable result envelope. |
 | Authentication / usage | [Headless cached credentials](https://www.antigravity.google/docs/cli/headless/), official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli), [Usage](https://www.antigravity.google/docs/cli/commands/usage) | Cached sign-in is official; authentication-required is a documented headless error. Read-only print `/usage` returns machine-readable JSON without a turn per changelog. Stable account/plan/quota field schema is not documented; status only accepts SUCCESS + zero turns and does not infer entitlement. |
 | Effective config/permissions | Official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli), [Permissions](https://www.antigravity.google/docs/cli/commands/permissions) | Release notes say JSON is available for `/config` and `/permissions` without a turn. The docs describe an interactive permission manager and publish no stable JSON field schema. Do not parse guessed keys as a policy gate. |
 | Credits overage | [Credits](https://www.antigravity.google/docs/cli/credits/), [Plans](https://www.antigravity.google/docs/plans/) | `useG1Credits=false`; no purchased/promotional overage fallback. |
@@ -36,24 +36,27 @@ The actual installer accepts `--dir`; its published skip flags were absent in
 this downloaded bootstrapper. Final verification will use a pinned checked
 archive without shell-profile mutation rather than assume installer flags.
 
-### 1.2.17 machine-catalog compatibility blocker
+### Correct global-flag ordering and model catalog envelope
 
-Accessed 2026-10-06. The official changelog says the `models` and `agents`
-subcommands gained `--output-format json`/`stream-json` before the pinned
-version. However, the actual SHA-512-verified Linux amd64 1.2.17 executable
-returns `flags provided but not defined: -output-format` for
-`agy models --output-format json`; `agy models --help` exposes only `-h` and
-`--help`. The official CLI repository's [issue #777](https://github.com/google-antigravity/antigravity-cli/issues/777)
-reports this exact release-note/binary mismatch. Since the binary emits no JSON,
-there is no actual 1.2.17 model-catalog JSON envelope to parse. Do not describe
-the test fixture (`command.data.models[]`) as verified official output. It is
-only a strict expected-envelope fixture pending a build that implements the
-documented interface. No parsing of `agy models` display text is permitted.
+Rechecked 2026-10-06. Official Antigravity CLI [issue #777](https://github.com/google-antigravity/antigravity-cli/issues/777)
+initially reports that `agy models --output-format json` rejects the flag. The
+maintainer-confirmed correction is to place global `--output-format json`
+before the subcommand: `agy --output-format json models`. The corrected command
+returns a zero-turn terminal envelope with `status: SUCCESS`, `num_turns: 0`,
+and `command: {name: "models", data: {models: [{id, label}, ...]}}`.
 
-The official headless guide documents JSON/stream-json model-turn envelopes,
-including terminal `status`, `num_turns`, and `usage`; it does not specify a
-machine-readable model-list schema. A compatible catalog build must be tested
-against its actual output before model selection or inference is enabled.
+The adapter now calls this exact form. It requires an object root, SUCCESS,
+absent/empty `error`, an integer zero `num_turns`, `command.name == "models"`,
+an object `data`, and a non-empty bounded models array. IDs must be conservative
+safe slugs and unique; labels are optional bounded printable display metadata.
+Malformed envelopes, duplicates, unsafe IDs, non-zero turns and plain-text
+output fail closed. No human-readable fallback or model request is used for
+catalog discovery.
+
+The adapter remains pinned to the reviewed 1.2.17. Version 1.3.0 is noted as a
+newer stable release observed/reported after the prior review; it has not been
+adapter-reviewed. Keep the current pin for live acceptance and handle 1.3.0 in
+a separate compatibility review afterward.
 
 Static inspection also identifies ADC and LLM gateway environment overrides;
 they will be excluded conservatively. This is configuration inspection, not an
@@ -77,14 +80,13 @@ account route, isolated scoped agent and sanitized environment; let the official
 CLI authenticate/refresh from its own secure store during the actual request.
 Do not read tokens or trust model-authored identity reports.
 
-Catalog discovery independently executes `agy models --output-format json`,
-without model inference. Parse only a verified machine envelope, extract safe
-slugs/needed display metadata, reject malformed/duplicate entries, use no text
-fallback, and require fresh membership at invocation. The currently pinned
-binary does not implement the documented flag, so the CLI catalog/model path
-is blocked pending an official fix. When available, there is no Gemini-family
-allowlist. GPT choices remain independent in the ChatGPT account catalog.
-Availability changes; neither catalog proves the subscription entitlement.
+Catalog discovery independently executes `agy --output-format json models`,
+without model inference. Parse the maintainer-confirmed envelope strictly,
+extract only safe slugs, reject malformed/duplicate entries, use no text
+fallback, and require fresh membership at invocation. The reviewed pin is
+1.2.17; the newer stable 1.3.0 is not adapter-reviewed. There is no
+Gemini-family allowlist. GPT choices remain independent in the ChatGPT account
+catalog. Availability changes; neither catalog proves subscription entitlement.
 
 The verified CLI's `-p "/usage" --output-format json` is used for an official
 read-only cached-account/backend readiness check. Accept only the standard
@@ -106,10 +108,10 @@ headless guide documents request-review init, so that label alone is not an
 unsafe downgrade. Always-proceed/unknown modes are rejected. Reject
 autonomous execution metadata and any error; never downgrade or switch to API
 billing. Real init/scoping/schema compatibility and Google AI Pro `/usage` quota
-evidence are still LIVE PENDING. Model discovery/inference are additionally
-blocked until an official CLI binary correctly implements the documented JSON
-catalog flag. This is a concrete interface mismatch, not a missing account
-attestation requirement.
+evidence are still LIVE PENDING. The catalog argument-order blocker is removed;
+proceed to the consolidated live acceptance using the reviewed 1.2.17 pin. CLI
+1.3.0 remains out of scope until a separate compatibility review after
+acceptance.
 
 ## OpenAI recheck
 

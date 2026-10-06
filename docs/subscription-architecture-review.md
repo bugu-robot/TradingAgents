@@ -82,5 +82,7 @@ Current offline executable verification: official Linux `agy` 1.2.17 release
 checksum, real version/help and public flags were inspected without model
 inference or Google credentials. Prior Gemini CLI work is retained in Git
 history only; its adapter and subscription tests are removed. Fake-executable
-Antigravity process/schema tests are not evidence that real CLI output satisfies
-the Pro-identification/init gates. Full current acceptance is in VERIFICATION.md.
+Antigravity process/schema tests validate adapter control flow, not live cached
+Google authentication, AI Pro entitlement, model access, catalog/inference
+interoperability or effective zero-tool init behavior. Full current acceptance
+is in VERIFICATION.md.
