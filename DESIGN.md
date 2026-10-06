@@ -60,11 +60,30 @@ in stream metadata. Prompts alone are insufficient isolation.
 Admission combines real configuration checks, the reviewed executable, an
 allowlisted child environment, credits-overage off and an isolated zero-tool
 agent. The official CLI uses its cached account sign-in; an unauthenticated
-noninteractive request returns an authentication-required error. Local preflight
-does not prove login or Google AI Pro entitlement. No separate account-attestation
-endpoint, secure-token inspection or speculative account/model prompt is needed.
-Final acceptance must record the authenticated plan/quota in official `/usage`
-after the smoke requests. Catalog presence is not entitlement evidence.
+noninteractive request returns an authentication-required error. Read-only
+`tradingagents auth status antigravity_cli` additionally calls the documented
+`agy -p "/usage" --output-format json`, accepts only a SUCCESS, zero-turn
+envelope, and reports local configuration readiness separately from successful
+cached-account/backend usage access. It discards raw output, reads no tokens,
+and does not infer plan/quota values absent from the stable payload. This check
+does not prove Google AI Pro entitlement. No separate attestation endpoint or
+speculative account/model prompt is needed.
+
+The official changelog advertises `agy models --output-format json`, but the
+SHA-512-verified official Linux 1.2.17 binary rejects the flag and its help omits
+it. The adapter uses that exact JSON-only command and never falls back to human
+text; consequently Antigravity model discovery and inference fail closed on
+that build. Parser fixtures exercise the expected `command.data.models` envelope
+with `id`/optional `label`, but that shape is **not verified against a successful
+official 1.2.17 response** because the command cannot produce one. Do not claim
+the shape is official until a fixed official binary emits it. Model catalog
+presence is not entitlement evidence.
+
+`/config` and `/permissions` are also advertised as non-inference JSON commands,
+but their stable machine field schemas are not published. They are not parsed
+as effective policy gates. Retain the existing local settings/policy checks and
+validated zero-tool stream init; document `/config` and `/permissions` evidence
+as optional manual review only.
 
 The stream follows the documented stdin-first protocol. Validate the exact
 isolated cwd, selected model/agent/schema, strict/request-review mode and empty tool list
@@ -81,13 +100,15 @@ or bypasses those settings. Always-proceed and unknown modes are rejected.
 ## Independent model selection
 
 Quick and Deep model selections are independent. ChatGPT slugs come from the
-official signed-in account catalog, and Antigravity slugs come from the public
-non-inference `agy models` command. Antigravity is not restricted to Gemini:
-Claude and other families are selectable when returned by that catalog. Require
-conservative slug syntax plus current catalog membership before each inference;
-reject custom provider/model settings and unlisted IDs. Pass the exact selected
-slug using `--model`; mismatched init and unknown/unavailable models fail without
-fallback. Catalog availability changes and does not guarantee plan entitlement.
+official signed-in account catalog. When the official Antigravity JSON catalog
+command works, accept safe slugs from any returned family; do not restrict the
+catalog to Gemini. Require conservative slug syntax plus fresh catalog
+membership before each inference; reject custom provider/model settings and
+unlisted IDs. Pass the exact selected slug using `--model`; mismatched init and
+unknown/unavailable models fail without fallback. Availability changes and does
+not guarantee plan entitlement. Current official CLI 1.2.17 lacks the
+documented models JSON flag, so its Antigravity catalog/model selection is
+currently unavailable rather than parsed from human text.
 Antigravity effort is independently selected as low, medium or high through
 `TRADINGAGENTS_ANTIGRAVITY_EFFORT`; provider/model values use existing tier env
 variables. OpenAI authentication and API-provider behavior remain unchanged.

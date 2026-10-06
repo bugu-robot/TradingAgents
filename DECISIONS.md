@@ -156,3 +156,62 @@ official interactive /usage plan/quota after requests, safe routing/credits
 settings and the full all-node AAPL Markdown/HTML report. Local preflight and
 catalog presence are not plan proof, and future model availability may change.
 Keep Draft PR #1 unmerged and production acceptance pending that evidence.
+
+## 2026-10-06 — Require JSON-only model discovery and fail on the 1.2.17 mismatch
+
+Use exactly `agy models --output-format json`; do not scrape terminal rows. The
+verified official Linux 1.2.17 executable rejects the flag even though the
+official changelog advertises it. The official issue tracker documents the same
+release-note/binary mismatch. Keep family-neutral slug validation and strict
+JSON parsing, but report that the expected catalog envelope has not been
+verified against a successful 1.2.17 response. Fail closed until an official
+build exposes the advertised flag and its actual JSON output is verified.
+
+## 2026-10-06 — Use official zero-turn `/usage` for read-only account readiness
+
+`tradingagents auth status antigravity_cli` performs safe local configuration
+checks, verifies the pinned CLI, then calls `agy -p "/usage" --output-format
+json`. Require documented terminal SUCCESS and `num_turns == 0`; report local
+configuration separately from backend usage readiness and discard raw output.
+Do not parse undocumented plan/quota fields or claim AI Pro entitlement from
+reachability. Live acceptance records official `/usage` evidence before and
+after actual text/schema requests.
+
+## 2026-10-06 — Do not infer effective policy from undocumented config JSON
+
+Although the official changelog describes no-turn JSON responses for `/config`
+and `/permissions`, their stable structured field schemas are not documented.
+Do not treat guessed keys as effective safety state. Keep read-only settings
+files/policy checks and stream init validation. The commands remain available
+for optional human evidence, not automatic policy authorization.
+
+## 2026-10-06 — Keep actual verification evidence distinct from fixtures
+
+Parser fixtures cover the candidate JSON envelope `command.data.models`, but
+the verified 1.2.17 binary rejects its output-format flag, so the fixture is not
+evidence of the actual official emitted shape. Status reachability tests likewise
+prove adapter control flow only; they do not prove live cached credentials,
+Google AI Pro plan/quota, request billing, or effective sandbox behavior. Keep
+the Draft PR unmerged until a fixed official CLI, live quota evidence and the
+full analyst/manager AAPL run all pass.
+
+## 2026-10-06 — Record final offline correction validation and cancellation cleanup
+
+The focused CLI correction passes **1,678** full-suite tests with 7 integration
+tests deselected, 20 upstream warnings and 100 subtests; dedicated subscription
+modules pass **415** tests. Six opt-in subscription LIVE tests are skipped, zero
+executed. Ruff, diff check, compile/import and 102-package `uv pip check` pass.
+The OAuth loopback regression passed with loopback-only test permission; no
+external service or credentials were used. Async cancellation joins its owned
+worker/process cleanup before returning. The `agy models` JSON compatibility
+blocker remains a separate external prerequisite; none of these offline results
+verify real subscription entitlement or quota.
+
+## 2026-10-06 — Make `auth status` an official non-inference usage check
+
+Supersedes the earlier local-only status wording: Antigravity status now runs
+safe configuration checks, verifies the CLI, and calls print-mode `/usage` with
+JSON output. Require a standard SUCCESS response and zero `num_turns`; report
+local readiness separately from backend reachability. Discard the response and
+do not claim a plan/quota value that lacks a documented schema. `/config` and
+`/permissions` JSON remain unparsed until stable public field contracts exist.

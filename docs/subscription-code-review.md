@@ -115,7 +115,7 @@ tool-call, SSE, schema and protected-token regressions still pass.
 | ID | Severity | Finding | Fix and offline evidence |
 | --- | --- | --- | --- |
 | B1 | P1 functional | Authentication always raises, so even a valid cached official Google sign-in can never execute. Lack of a separate Pro attestation is incorrectly treated as an interface blocker. | Remove unconditional gate. Real settings/binary admission permits documented cached-account execution; CLI owns authentication/refresh and terminal auth errors. No invented account probe/token reading. Complete fake-executable admission + catalog + successful stream tests cover each family without bypassing preflight. Actual Pro entitlement remains a live /usage acceptance requirement. |
-| B2 | P2 | Catalog discovery calls the blocked inference preflight, preventing documented `agy models`. | Separate catalog preflight; run only version/help/models probes with no model request. CLI auth models regression succeeds, records only models, and warns catalog is not entitlement proof. Unsafe settings still prevent catalog process startup. |
+| B2 | P2 | Catalog discovery calls the blocked inference preflight, preventing documented `agy models`. | Separate catalog preflight; run only version/help/models probes with no model request. The parser/CLI-command regression uses a mocked JSON response only. Actual verified 1.2.17 rejects the output-format flag; see C1 below. Unsafe settings still prevent catalog process startup. |
 | B3 | P2 | Gemini-only syntax and parsing rejects official catalog models from Claude/other families. | Conservative family-independent slug syntax plus fresh official catalog membership before inference. Reject malformed/duplicate catalogs, path/flag/shell/custom IDs and unlisted models. Gemini/Claude/GPT-OSS fixtures pass exact --model; mismatched init or unavailable CLI selection fails without fallback. |
 | B4 | P2 | Subscription model menu offers arbitrary custom IDs; one env model hides both tier choices; effort is absent from selection/run settings. | Independent Quick/Deep catalog menus with no custom entry; each subscription tier requires its own unattended model. Capability-driven low/medium/high effort passes through run config/CLI and saved settings. Existing API env/default regressions remain unchanged. |
 | B5 | P2 | Waiting for init before writing stdin relies on an undocumented ordering and can deadlock a supported input-first CLI. | Use documented stdin-first operation under prevalidated settings, sanitized environment and scoped zero-tool agent. Validate init as soon as received; accept no output before valid init, terminal SUCCESS and exit 0. Unsafe input-first init and autonomous metadata are rejected; real fake-process tests verify cleanup. |
@@ -130,9 +130,9 @@ action metadata, terminal schema validation and error classification, subprocess
 deadlines/cancellation/group cleanup, and raw diagnostic redaction. Selected
 models/effort are safe run metadata; credentials remain CLI/app owned.
 
-Final evidence: **402 subscription offline tests passed; 1,665 full-fork tests
-passed, 7 integration deselected, 100 subtests; 1,263 clean v0.6.0 baseline tests
-passed, 1 integration deselected, 99 subtests**. Both full suites retain the same
+At that review checkpoint, **402 subscription offline tests passed; 1,665
+full-fork tests passed, 7 integration deselected, 100 subtests; 1,263 clean
+v0.6.0 baseline tests passed, 1 integration deselected, 99 subtests**. Both full suites retain the same
 20 upstream warnings. Ruff, diff-check, compile/import and dependency check pass.
 Six LIVE tests explicitly skip by default; **zero executed**, no live passes.
 
@@ -152,3 +152,52 @@ binary `/dev/tty` and require a controlling interactive SSH terminal. A local
 PTY subprocess check proved stdin/stdout passthrough; this Work runtime has no
 accessible controlling `/dev/tty`, and no actual sign-in was attempted. This
 changes verification instructions only; provider regression counts are unchanged.
+
+## Machine-catalog and read-only usage correction — 2026-10-06
+
+This addendum supersedes the earlier conclusion that catalog discovery is
+currently usable. Rechecked the official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli),
+[headless JSON protocol](https://www.antigravity.google/docs/cli/headless/),
+[usage guide](https://www.antigravity.google/docs/cli/commands/usage),
+[permissions guide](https://www.antigravity.google/docs/cli/commands/permissions),
+and the official CLI repository's [issue #777](https://github.com/google-antigravity/antigravity-cli/issues/777).
+The SHA-512-verified Linux 1.2.17 binary in this workspace reproduces the
+reported `agy models --output-format json` unknown-flag error. Therefore no
+successful model-list JSON output shape from the pinned official CLI exists to
+inspect in this environment.
+
+| ID | Severity | Finding | Correction / remaining evidence |
+| --- | --- | --- | --- |
+| C1 | P2 external compatibility | Changelog says the model/agent list subcommands accept machine-readable output, but official Linux 1.2.17 rejects the flag and help omits it. | Always invoke only `agy models --output-format json`; parse strict JSON, reject malformed/duplicate/unsafe slugs and never fall back to display rows. Recognize the documented-flag rejection and fail closed. Selection/inference cannot run with 1.2.17. Wait for a fixed official binary and verify its actual JSON envelope before accepting the current fixture shape. |
+| C2 | P2 status correctness | Auth status must not be blocked by inference preflight and must not claim a plan based on catalog/local configuration. | Status now runs local subscription-only settings checks, verified binary detection, then official `agy -p "/usage" --output-format json`. Require terminal SUCCESS plus documented zero `num_turns`; return separate local configuration and cached-account/backend readiness. Do not retain raw payload, read tokens or infer undocumented plan/quota fields. Unit tests prove exact command and no model transport. Live sign-in/backend success remains pending. |
+| C3 | P3 schema/documentation | `/config` and `/permissions` can return no-turn JSON by release-note contract, but stable field definitions are absent from official docs. | Do not guess effective configuration/permission keys or treat them as a safety gate. Preserve local configuration/policy checks and stream init validation. These commands may be reviewed manually as private evidence. |
+| C4 | P3 lifecycle regression | Async cancellation signaled the provider worker but did not reliably wait for owned subprocess cleanup before returning. | Worker now signals a thread-safe completion event after process-group reaping; cancellation waits for that event. Focused test verifies the child is gone before the cancelled task returns. |
+
+The parser fixture uses `command.data.models[]` rows with `id` and optional
+`label`; it is an expected strict envelope fixture, **not a verified actual
+official 1.2.17 payload**. Tests verify parser behavior against that fixture,
+family-independent Gemini/Claude/other slugs, duplicates, malformed JSON and no
+text fallback. They must not be reported as proof of the actual catalog shape.
+`/usage` fixtures similarly prove parsing/control flow, not Google AI Pro tier
+or quota.
+
+The local CLI was unable to start its no-account `/usage` probe because this
+execution sandbox denied binding the CLI's local socket. No sign-in, account
+query, quota consumption or model inference was performed. The official
+changelog states read-only `/usage` print JSON starts no agent turn and spends
+no model quota; `auth status` requires SUCCESS/zero turns. The usage guide
+documents interactive model quota viewing/refresh, but does not provide stable
+headless plan-tier fields. Thus status can establish that the official read-only
+operation succeeded, not the plan tier or remaining model quota.
+
+No P1/P2 subscription-isolation or credential-handling code finding is open
+after this pass. The external P2 catalog incompatibility is still a real
+functional blocker: do not perform live Antigravity model requests until an
+official build exposes the advertised interface and its actual model JSON is
+validated. PR #1 remains Draft and unmerged. Prior test totals above are the
+previous checkpoint; the completed current correction suite is **1,678
+full-repository tests passed, 7 integration deselected, 20 existing warnings,
+100 subtests**, plus **415 dedicated subscription tests passed**. Six
+subscription LIVE tests remain explicitly skipped, zero executed. Ruff, diff
+check, compile/import and 102-package dependency check pass. See STATUS.md and
+VERIFICATION.md for the remaining live acceptance.

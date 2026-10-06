@@ -11,8 +11,9 @@ No user sign-in or model inference was used for this review.
 | SSH / cached auth | [Install/auth](https://www.antigravity.google/docs/cli/install/) | CLI prints a URL, local browser returns a code pasted into SSH; CLI/keyring owns credentials. |
 | Headless / output | [Headless](https://www.antigravity.google/docs/cli/headless/) | Print mode; JSON completion envelope and NDJSON init/step/result events. |
 | Schema | [Headless schema](https://www.antigravity.google/docs/cli/headless/#structured-output-with-a-schema) | `--json-schema`; enforced schema and `structured_output` in terminal result; independently validate. |
-| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent), [Models](https://www.antigravity.google/docs/models/) | `agy models` is non-inference discovery; allow all safely named catalog families, including Claude. Independent exact slug and low/medium/high effort; unknown selection fails rather than switching. |
-| Authentication / quota evidence | [Headless cached credentials](https://www.antigravity.google/docs/cli/headless/), [Official /usage](https://www.antigravity.google/docs/cli/commands/usage) | Headless uses cached account credentials or exits authentication-required. Catalog/local preflight is not Pro entitlement proof; record interactive plan/quota after live smokes. |
+| Models / effort | [Headless selection](https://www.antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent), official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli) | Changelog advertises `agy models --output-format json` and stream-json; current 1.2.17 binary rejects the flag. No successful emitted model JSON envelope is available to inspect. The adapter is JSON-only and refuses human-text fallback. |
+| Authentication / usage | [Headless cached credentials](https://www.antigravity.google/docs/cli/headless/), official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli), [Usage](https://www.antigravity.google/docs/cli/commands/usage) | Cached sign-in is official; authentication-required is a documented headless error. Read-only print `/usage` returns machine-readable JSON without a turn per changelog. Stable account/plan/quota field schema is not documented; status only accepts SUCCESS + zero turns and does not infer entitlement. |
+| Effective config/permissions | Official [CLI changelog](https://www.antigravity.google/docs/changelog?tab=cli), [Permissions](https://www.antigravity.google/docs/cli/commands/permissions) | Release notes say JSON is available for `/config` and `/permissions` without a turn. The docs describe an interactive permission manager and publish no stable JSON field schema. Do not parse guessed keys as a policy gate. |
 | Credits overage | [Credits](https://www.antigravity.google/docs/cli/credits/), [Plans](https://www.antigravity.google/docs/plans/) | `useG1Credits=false`; no purchased/promotional overage fallback. |
 | API / custom endpoint | [Install API mode](https://www.antigravity.google/docs/cli/install/#using-a-gemini-api-key) | `modelProvider=gemini` plus GEMINI_API_KEY routes to API; reject this config before inference. GOOGLE_GEMINI_BASE_URL is a routing override. |
 | Settings | [Settings](https://www.antigravity.google/docs/settings?tab=cli), [Reference](https://www.antigravity.google/docs/cli/reference/) | Inspect real `~/.gemini/antigravity-cli/settings.json`; no global modifications or administrator-policy substitution. |
@@ -34,6 +35,25 @@ the website only lists low/medium/high: initially accept the documented three.
 The actual installer accepts `--dir`; its published skip flags were absent in
 this downloaded bootstrapper. Final verification will use a pinned checked
 archive without shell-profile mutation rather than assume installer flags.
+
+### 1.2.17 machine-catalog compatibility blocker
+
+Accessed 2026-10-06. The official changelog says the `models` and `agents`
+subcommands gained `--output-format json`/`stream-json` before the pinned
+version. However, the actual SHA-512-verified Linux amd64 1.2.17 executable
+returns `flags provided but not defined: -output-format` for
+`agy models --output-format json`; `agy models --help` exposes only `-h` and
+`--help`. The official CLI repository's [issue #777](https://github.com/google-antigravity/antigravity-cli/issues/777)
+reports this exact release-note/binary mismatch. Since the binary emits no JSON,
+there is no actual 1.2.17 model-catalog JSON envelope to parse. Do not describe
+the test fixture (`command.data.models[]`) as verified official output. It is
+only a strict expected-envelope fixture pending a build that implements the
+documented interface. No parsing of `agy models` display text is permitted.
+
+The official headless guide documents JSON/stream-json model-turn envelopes,
+including terminal `status`, `num_turns`, and `usage`; it does not specify a
+machine-readable model-list schema. A compatible catalog build must be tested
+against its actual output before model selection or inference is enabled.
 
 Static inspection also identifies ADC and LLM gateway environment overrides;
 they will be excluded conservatively. This is configuration inspection, not an
@@ -57,12 +77,26 @@ account route, isolated scoped agent and sanitized environment; let the official
 CLI authenticate/refresh from its own secure store during the actual request.
 Do not read tokens or trust model-authored identity reports.
 
-Catalog discovery independently executes `agy models`, without model inference.
-Its documented rows contain slug then label; parse safe slugs, discard raw labels,
-reject malformed/duplicate catalogs and require current membership at invocation.
-There is no Gemini-family allowlist. GPT choices remain independent in the
-ChatGPT account catalog. Availability changes; neither catalog proves the
-subscription entitlement of the selected model.
+Catalog discovery independently executes `agy models --output-format json`,
+without model inference. Parse only a verified machine envelope, extract safe
+slugs/needed display metadata, reject malformed/duplicate entries, use no text
+fallback, and require fresh membership at invocation. The currently pinned
+binary does not implement the documented flag, so the CLI catalog/model path
+is blocked pending an official fix. When available, there is no Gemini-family
+allowlist. GPT choices remain independent in the ChatGPT account catalog.
+Availability changes; neither catalog proves the subscription entitlement.
+
+The verified CLI's `-p "/usage" --output-format json` is used for an official
+read-only cached-account/backend readiness check. Accept only the standard
+headless SUCCESS and zero-turn fields; retain no raw output and do not invent
+plan/quota fields. `/usage` success means the read-only CLI operation worked,
+not that Google AI Pro entitlement or a particular quota was established.
+Record official usage evidence before and after requests during live acceptance.
+
+The changelog advertises no-turn JSON for `/config` and `/permissions`; however,
+the official docs do not publish stable field schemas. These commands are not
+adopted as machine policy validators. Existing local settings/policy checks and
+the zero-tool stream init gate remain.
 
 Submit input according to the official programmatic example, then validate init
 before accepting the terminal SUCCESS result. Exact selected model, scoped
@@ -72,7 +106,10 @@ headless guide documents request-review init, so that label alone is not an
 unsafe downgrade. Always-proceed/unknown modes are rejected. Reject
 autonomous execution metadata and any error; never downgrade or switch to API
 billing. Real init/scoping/schema compatibility and Google AI Pro `/usage` quota
-evidence are still LIVE PENDING. No unconditional authentication blocker remains.
+evidence are still LIVE PENDING. Model discovery/inference are additionally
+blocked until an official CLI binary correctly implements the documented JSON
+catalog flag. This is a concrete interface mismatch, not a missing account
+attestation requirement.
 
 ## OpenAI recheck
 
