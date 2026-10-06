@@ -79,11 +79,51 @@ def test_chatgpt_plan_live_sequential_tool_continuation(plan):
     assert not answer.tool_calls and "value-1" in answer.content and "value-2" in answer.content
 
 
-def test_gemini_cli_live_cached_google_signin_and_json():
-    llm = create_llm_client("gemini_cli", os.environ.get("GEMINI_CLI_LIVE_MODEL", "auto"),
-                            max_retries=1, timeout=180).get_llm()
+@pytest.fixture
+def antigravity():
+    """LIVE: cached official CLI sign-in, no synthetic auth/settings overrides."""
+    model = os.environ.get("ANTIGRAVITY_LIVE_MODEL")
+    if not model:
+        pytest.fail("Set ANTIGRAVITY_LIVE_MODEL to a slug from tradingagents auth models antigravity_cli.")
+    return create_llm_client("antigravity_cli", model,
+                             executable=os.environ.get("ANTIGRAVITY_LIVE_BIN"),
+                             max_retries=0, timeout=180).get_llm()
+
+
+def test_antigravity_live_google_ai_pro_headless_text(antigravity):
+    """LIVE 4: requires positive Pro evidence and safe init before inference."""
+    llm = antigravity
     result = llm.invoke([SystemMessage("Use only supplied text. Return the marker requested in the latest message."),
                          HumanMessage("Marker SUBSCRIPTION_SMOKE_OK"), AIMessage("Understood."),
                          HumanMessage("Return that marker now, without other text.")])
     assert "SUBSCRIPTION_SMOKE_OK" in result.content
-    assert not result.tool_calls and result.response_metadata["provider"] == "gemini_cli"
+    assert not result.tool_calls and result.response_metadata["provider"] == "antigravity_cli"
+    assert result.response_metadata["autonomous_tools"] is False
+
+
+def test_antigravity_live_native_json_schema(antigravity):
+    """LIVE 5: native CLI schema, independent JSON Schema and Pydantic checks."""
+    result = antigravity.with_structured_output(SmokeResult).invoke(
+        "Return marker SUBSCRIPTION_SMOKE_OK and evidence 'subscription structured output test'.")
+    assert isinstance(result, SmokeResult) and result.marker == "SUBSCRIPTION_SMOKE_OK"
+
+
+@pytest.mark.skipif(os.environ.get("RUN_SUBSCRIPTION_ISOLATION_LIVE") != "1",
+                    reason="LIVE 6 is optional; set RUN_SUBSCRIPTION_ISOLATION_LIVE=1 explicitly.")
+def test_antigravity_live_dummy_billing_variables_cannot_switch_provider(antigravity, monkeypatch):
+    """LIVE 6: consumes Pro allowance; dummy keys must never reach the CLI.
+
+    Success is an isolation smoke check, not independent billing/entitlement
+    proof. Review official account /usage and credits as part of acceptance.
+    """
+    for variable in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI",
+                     "GOOGLE_GENAI_USE_GCA", "GOOGLE_GENAI_USE_ENTERPRISE",
+                     "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_ACCESS_TOKEN",
+                     "GOOGLE_GEMINI_BASE_URL", "GOOGLE_CLOUD_PROJECT",
+                     "GOOGLE_CLOUD_PROJECT_ID", "GOOGLE_CLOUD_QUOTA_PROJECT",
+                     "GOOGLE_CLOUD_LOCATION", "GCLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT",
+                     "AGY_ADC_AUTH", "AGY_LLM_GATEWAY_URL", "AGY_LLM_GATEWAY_API_KEY"):
+        monkeypatch.setenv(variable, "dummy-billing-isolation-marker")
+    result = antigravity.invoke("Return only SUBSCRIPTION_SMOKE_OK from the supplied text. Do not use any tools.")
+    assert "SUBSCRIPTION_SMOKE_OK" in result.content
+    assert result.response_metadata["provider"] == "antigravity_cli"

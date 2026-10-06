@@ -13,7 +13,7 @@ from __future__ import annotations
 
 PROVIDER_API_KEY_ENV: dict[str, str | None] = {
     "chatgpt_plan": None,
-    "gemini_cli": None,
+    "antigravity_cli": None,
     "openai":     "OPENAI_API_KEY",
     "anthropic":  "ANTHROPIC_API_KEY",
     "google":     "GOOGLE_API_KEY",

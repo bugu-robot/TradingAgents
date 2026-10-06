@@ -22,7 +22,9 @@ def sign_in(provider: str = typer.Argument("chatgpt_plan"),
             enable_plan_usage: bool = typer.Option(False, "--enable-plan-usage", help="Explicitly request consent after a prior sign-in without plan usage.")):
     """Continue with ChatGPT; approve plan usage in the official sign-in page."""
     if provider != "chatgpt_plan":
-        typer.echo("For Google subscription sign-in, run gemini and select Sign in with Google.", err=True)
+        typer.echo("For Antigravity Google AI Pro sign-in, run the official agy CLI interactively. "
+                   "Over SSH, open its URL locally and paste the browser authorization code back into agy. "
+                   "See VERIFICATION.md; TradingAgents does not handle Google OAuth.", err=True)
         raise typer.Exit(1)
     try:
         status = login(ChatGPTAuthStore(profile=profile), port=port, open_browser=browser,
@@ -47,7 +49,8 @@ def status(provider: str = typer.Argument("chatgpt_plan")):
         if provider == "chatgpt_plan":
             typer.echo(json.dumps(ChatGPTAuthStore().status()))
         else:
-            typer.echo(f"{label}: cached Google authentication is configured; live entitlement is not yet verified.")
+            typer.echo(f"{label}: strict configuration and CLI personal Pro account checks passed. "
+                       "This preflight does not prove live inference, quota or billing; live validation remains required.")
     except (SubscriptionError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None

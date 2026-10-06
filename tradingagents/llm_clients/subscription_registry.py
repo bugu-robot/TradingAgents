@@ -15,6 +15,7 @@ class SubscriptionProvider:
     structured_output: str
     unsupported_parameters: frozenset[str]
     knob_provider: str | None = None
+    configuration_parameters: tuple[tuple[str, str], ...] = ()
 
 
 SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
@@ -25,11 +26,12 @@ SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
         unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),
         knob_provider="openai",
     ),
-    "gemini_cli": SubscriptionProvider(
-        label="Gemini CLI (Google subscription; deep tier only)",
-        module="gemini_cli_client", client_class="GeminiCLIClient",
-        tool_calls=False, structured_output="none",
+    "antigravity_cli": SubscriptionProvider(
+        label="Antigravity CLI (Google AI Pro; deep only; live pending)",
+        module="antigravity_cli_client", client_class="AntigravityCLIClient",
+        tool_calls=False, structured_output="native_json_schema",
         unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),
+        configuration_parameters=(("antigravity_effort", "effort"),),
     ),
 }
 

@@ -36,10 +36,13 @@ history, developer instructions and namespaced function tools. Only a completed
 stream is success; quota failures may arrive after text deltas. Ordinary Codex
 login credentials are not substituted for this app-specific plan-use authorization.
 
-Google documents personal Google sign-in, Google AI Pro entitlement, cached auth
-and headless use. Gemini CLI's JSON shell output is not by itself a native
-LangChain tool-call or JSON-schema interface. Inspect the installed official CLI
-before declaring those capabilities; unsupported tiers must fail explicitly.
+The Google path was replaced on 2026-10-06 with official Antigravity CLI, whose
+headless interface includes native JSON Schema. It is initially deep-only and
+reasoning-only; autonomous CLI tools cannot replace TradingAgents ToolNode.
+Real configuration, personal Pro evidence and strict zero-tool initialization
+must pass before inference. See [current official review](antigravity-official-review.md)
+and [STATUS](../STATUS.md) for live compatibility gates. The ordinary upstream
+`google` API client remains unchanged.
 
 References (official, accessed 2026-10-05):
 
@@ -54,11 +57,8 @@ References (official, accessed 2026-10-05):
 - https://developers.openai.com/codex/app-server
 - https://developers.openai.com/api/docs/guides/function-calling
 - https://developers.openai.com/api/docs/guides/structured-outputs
-- https://geminicli.com/docs/get-started/authentication/
-- https://geminicli.com/docs/cli/headless/
-- https://geminicli.com/docs/resources/quota-and-pricing/
-- https://geminicli.com/docs/reference/configuration/
-- https://geminicli.com/docs/cli/system-prompt/
+- Google references superseded by the 2026-10-06 Antigravity official review
+  linked above.
 
 ## Historical PR #1195
 
@@ -78,16 +78,9 @@ providers and graph execution remain intact. No upstream writes or PR merges.
 Live OAuth, entitlement and AAPL verification are opt-in and consolidated after
 offline development; mocked transport tests are not evidence of live entitlement.
 
-Final offline CLI verification (2026-10-06): installed official
-`@google/gemini-cli@0.62.0`; ran its real version/help probes without inference.
-Loaded its actual settings implementation with a temporary home containing
-conflicting API auth, shell-tool, hook and credit-overage preferences. With the
-documented `--skip-trust` behavior, the isolated workspace correctly selects
-`oauth-personal`, has an empty core-tool list, disables hooks/agents/skills and
-sets `billing.overageStrategy=never`. Local `admin.*` fields are overwritten by
-remote admin defaults in 0.62.0, so they cannot disable MCP/extensions. The
-adapter instead uses documented `--extensions none` and a nonempty allowlist
-containing only its unique, unconfigured temporary workspace name; native MCP
-discovery rejects every other server. An empty MCP allowlist would allow all
-servers and is deliberately avoided. No real credentials or model quota were
-used in this verification.
+Current offline executable verification: official Linux `agy` 1.2.17 release
+checksum, real version/help and public flags were inspected without model
+inference or Google credentials. Prior Gemini CLI work is retained in Git
+history only; its adapter and subscription tests are removed. Fake-executable
+Antigravity process/schema tests are not evidence that real CLI output satisfies
+the Pro-identification/init gates. Full current acceptance is in VERIFICATION.md.

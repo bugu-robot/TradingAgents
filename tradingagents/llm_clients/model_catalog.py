@@ -97,7 +97,7 @@ MODEL_OPTIONS: ProviderModeOptions = {
     # The account's current plan catalog is discovered after OAuth; do not
     # imply that the paid API's model list describes subscription entitlement.
     "chatgpt_plan": _CUSTOM_ONLY,
-    "gemini_cli": {"quick": [], "deep": [("Gemini CLI automatic selection", "auto"), ("Custom model ID", "custom")]},
+    "antigravity_cli": {"quick": [], "deep": [("Gemini slug from the official Antigravity catalog", "custom")]},
     "openai": {
         "quick": [
             ("GPT-6 Luna - Fast, high-volume and cost-efficient", "gpt-6-luna"),

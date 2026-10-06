@@ -296,20 +296,29 @@ See `tradingagents/default_config.py` for all configuration options.
 `chatgpt_plan` uses the officially documented **Sign in with ChatGPT** plan-use
 authorization and public Responses API, without `OPENAI_API_KEY`. It supports
 native structured output and the analysts' sequential tool-call loops.
-`gemini_cli` uses **Sign in with Google** and cached personal-account authentication
-in the verified Gemini CLI 0.62.0, including eligible Google AI Pro accounts.
-It is a text adapter for the **deep tier only**; CLI JSON does not supply native
-tool calls or JSON-schema output.
+`antigravity_cli` targets **Google AI Pro** through the official native `agy`
+CLI 1.2.17. Google authentication/refresh remain owned by Antigravity. This
+**deep-only** adapter implements native JSON Schema with independent validation;
+it does not implement TradingAgents native tool calling.
 
 Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
-`deep_think_provider="gemini_cli"`. Subscription model availability and allowance
-come from the signed-in accounts. Google CLI credit overage is disabled; no
-automatic switch to an API provider is made when allowance runs out.
+`deep_think_provider="antigravity_cli"`, or ChatGPT Plan for both tiers. The
+adapter rejects API/provider/custom-endpoint modes, unsafe global customization,
+credit overage and unreviewed policy before inference. It sanitizes the child
+environment and requires positive CLI personal Pro account information and a
+strict zero-tool initialization before sending the prompt.
 
-See [subscription providers](docs/subscription-providers.md) for authentication,
-supported combinations, limitations, offline evidence, and the consolidated
-Ubuntu sign-in, live smoke tests and full AAPL verification. Existing API
-providers remain available. Live account entitlement has not been verified yet.
+**Live acceptance is pending.** Official headless docs do not guarantee those
+account/init output contracts; if the actual CLI cannot provide them, inference
+is blocked. Offline mocks do not establish Plus/Pro entitlement or billing.
+The former Gemini CLI subscription provider has been removed; the ordinary
+`google` Gemini API provider remains unchanged.
+
+Read [STATUS.md](STATUS.md) for current checkpoints, [DESIGN.md](DESIGN.md) and
+[DECISIONS.md](DECISIONS.md) for architecture, [VERIFICATION.md](VERIFICATION.md)
+for the single Ubuntu sign-in/smoke/full-AAPL session, and
+[UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) for stable-release maintenance. Draft PR #1
+remains unmerged. Existing API providers remain available by explicit selection.
 
 ### Fundamentals as filed
 

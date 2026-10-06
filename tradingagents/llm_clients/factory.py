@@ -103,6 +103,10 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
         for key in subscription.unsupported_parameters:
             if config.get(key) is not None and config.get(key) != "":
                 raise ValueError(f"{provider} does not support {key}; unset this setting for subscription use.")
+        for config_key, parameter in subscription.configuration_parameters:
+            value = config.get(config_key)
+            if value is not None and value != "":
+                kwargs[parameter] = value
 
     if provider == "google":
         thinking_level = config.get("google_thinking_level")
