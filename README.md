@@ -305,14 +305,17 @@ Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
 `deep_think_provider="antigravity_cli"`, or ChatGPT Plan for both tiers. The
 adapter rejects API/provider/custom-endpoint modes, unsafe global customization,
 credit overage and unreviewed policy before inference. It sanitizes the child
-environment, scoped zero-tool initialization and a supported personal Pro
-account preflight before sending a prompt.
+environment and uses a scoped zero-tool agent. The official CLI owns cached
+authentication; init and terminal SUCCESS are validated before accepting output.
 
-**Antigravity activation is blocked.** The reviewed official CLI 1.2.17 docs do
-not expose a supported non-inference headless Pro account preflight. The adapter
-therefore always refuses inference; signing in alone does not unlock it. A future
-official preflight needs implementation/review before live acceptance. Init
-ordering also remains unverified. Offline mocks do not establish entitlement or billing.
+Select Quick and Deep models independently: ChatGPT models come from its signed-in
+account catalog, and Antigravity models come from the non-inference `agy models`
+command. Gemini, Claude and other safely named catalog families are selectable;
+unlisted/custom model IDs and silent model/API fallback are rejected. Antigravity
+effort supports low, medium and high. Catalog availability changes and does not
+prove entitlement. **Live acceptance remains pending:** verify cached execution,
+native schema, actual zero-tool scoping, official `/usage` plan/quota and a full
+AAPL run. Offline mocks do not establish entitlement or billing.
 The former Gemini CLI subscription provider has been removed; the ordinary
 `google` Gemini API provider remains unchanged.
 

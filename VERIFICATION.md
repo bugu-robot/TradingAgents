@@ -4,15 +4,15 @@ Updated **2026-10-06 UTC**. **OFFLINE VERIFIED is not LIVE VERIFIED.** Draft PR 
 remains unmerged. No subscription inference, user OAuth login or complete AAPL
 run has been live verified.
 
-**Current activation blocker:** official Antigravity CLI 1.2.17 exposes no reviewed
-non-inference headless personal Google AI Pro preflight. `/help` is documented
-as a TUI panel, not an account-report endpoint. The adapter always stops at auth
-before inference. Login alone cannot unlock it. Do not start the live session
-against this checkpoint: first implement/review a supported official preflight,
-then verify strict zero-tool init-before-input. There is no force/bypass flag,
-token inspection or local attestation. The commands below are the consolidated
-acceptance procedure, deferred behind that gate; they do not claim it can finish
-on the current code. If a new CLI is needed, update/review its pin and commands.
+**Current admission:** safe real settings, the reviewed binary, sanitized child
+environment and an isolated zero-tool agent admit official cached-account
+execution. Authentication is checked by the CLI during the actual request; no
+separate Pro-attestation endpoint or secure-token reading is required. Input
+follows the documented stdin-first protocol; init must validate before accepting
+terminal SUCCESS. Catalog discovery executes only `agy models`, never inference.
+Local readiness/catalog is not plan entitlement proof. The remaining acceptance
+checks are actual CLI scoping/init/schema compatibility, Plus/Pro entitlement,
+official interactive `/usage` quota after smokes and the full AAPL run.
 
 ## Offline results
 
@@ -21,8 +21,8 @@ Python **3.12.14**, UTC, optional Bedrock installed. No AWS/provider service use
 | Check | Actual result |
 | --- | --- |
 | Clean upstream v0.6.0/tag `1394a3f72aa4393e1a98f51b382434c4b4c2d972`, detached test worktree | **1,263 passed**, 1 upstream integration deselected, 99 subtests passed |
-| Full feature branch suite | **1,605 passed**, 7 integration deselected, 101 subtests passed |
-| Subscription offline modules | **342 cases** passed in the full suite |
+| Full feature branch suite | **1,665 passed**, 7 integration deselected, 100 subtests passed |
+| Subscription offline modules | **402 cases** passed in both the full suite and dedicated run |
 | Explicit subscription LIVE collection, default guards | **6 skipped**, 0 executed |
 | Warnings | The same **20 upstream unknown-model RuntimeWarnings** in both full suites; not suppressed |
 | Ruff across repository / `git diff --check` | Passed / passed |
@@ -54,20 +54,22 @@ tests. Normal pytest forbids service sockets and excludes integration tests.
 | Coverage | Offline evidence |
 | --- | --- |
 | CLI discovery/version/public headless flags | `test_antigravity_cli.py`: missing executable, unverified version, each required flag; actual official Linux version/help also inspected |
-| Subscription admission/API/Vertex/custom endpoint/policy | Real settings parsed read-only; every conflicting config fails before child startup. Official account preflight is deliberately blocked, not faked |
+| Subscription admission/API/Vertex/custom endpoint/policy | Real settings parsed read-only; conflicting config fails before child startup. Cached-account requests proceed without invented attestation; documented CLI auth errors remain terminal |
+| Catalog/models/effort | Official non-inference `agy models` only; Gemini/Claude/other safe catalog families, unknown/custom rejection, independent tier menus/env models and low/medium/high effort with saved settings |
 | Environment isolation | All requested Gemini/Google/Vertex/project/ADC variables plus gateway, enterprise, custom-agent, proxy and future routing switches excluded; parent environment unchanged |
 | JSON/stream/schema/malformed/no output | Strict UTF-8, duplicate/nonfinite/depth rejection; init/identity/terminal order; native schema, independent Draft 2020-12 plus strict Pydantic; no remote resolution/fallback |
 | Timeout/cancellation/cleanup | Real fake-executable pipes, group descendants, bounded probe/output, closed-pipe cancellation, reaping and private workspace deletion |
 | Quota/rate/auth/entitlement/redaction | Safe classification; terminal failures never retry as plain calls; bounded rate/service retries; opaque raw diagnostics discarded |
-| Files/commands/MCP/plugins/skills/subagents | All deny namespaces and empty agent lists checked; init mismatch prevents stdin; action metadata terminates/rejects; no unsafe permission switch |
+| Files/commands/MCP/plugins/skills/subagents | All deny namespaces and empty agent lists checked before startup; init mismatch prevents accepting any response; strict real settings plus strict/request-review init; action metadata terminates/rejects; no unsafe permission switch |
 | Tier admission/graph integration | Antigravity quick rejected before auth, deep constructed, ChatGPT quick/Antigravity deep routed; Research and Portfolio Manager native schema, terminal errors; saved run settings |
 | ChatGPT native analyst tools | Real Market Analyst + LangGraph ToolNode: stock data → ToolMessage → indicator → ToolMessage → report; sequential/parallel calls and duplicate-ID prevention |
 | OAuth/security review | State/nonce/PKCE, OIDC signature/issuer/audience/expiry/subject, loopback bounds, locked refresh, no-follow owner-only storage, redaction and terminal UTF-8 SSE |
 
-All details and corrected A1–A8 findings are in
-[subscription-code-review.md](docs/subscription-code-review.md). Offline reasoning
-transport fixtures explicitly bypass only the unsupported real account preflight;
-they are not a supported method of unlocking the installed provider.
+All details and corrected A/B findings are in
+[subscription-code-review.md](docs/subscription-code-review.md). Mocked account
+responses and real fake-executable lifecycle tests verify control flow only;
+complete admission/catalog/stdin-first tests do not bypass the actual code gate,
+but also do not prove real cached credentials, entitlement or effective sandboxing.
 
 ## Live checks — all pending
 
@@ -83,10 +85,11 @@ they are not a supported method of unlocking the installed provider.
 Also require account catalogs, actual Pro/Plus quota/credit inspection and one
 complete AAPL graph with all four analysts, bull/bear researchers, Research
 Manager, trader, aggressive/neutral/conservative risk analysts and Portfolio
-Manager. Save Markdown/HTML and settings proving the exact provider pair. Test 6
+Manager. Save Markdown/HTML and settings recording the exact provider pair,
+independently selected models and Antigravity effort. Test 6
 cannot independently prove billing: inspect official account usage as well.
 
-## One consolidated Ubuntu/SSH session — deferred until admission is implemented
+## One consolidated Ubuntu/SSH session — final acceptance pending
 
 Use Ubuntu amd64, Python 3.12, a dedicated personal account environment and an
 accessible Linux Secret Service/D-Bus keyring. Existing admin policy is never
@@ -99,6 +102,7 @@ with a local OAuth/browser companion, not separate repeated user tests.
 
 ```bash
 set -euo pipefail
+umask 077
 export TA_VERIFY_CHECKOUT="$HOME/TradingAgents-subscription-verification"
 if [ ! -d "$TA_VERIFY_CHECKOUT/.git" ]; then
   git clone --branch feat/subscription-providers --single-branch \
@@ -225,37 +229,89 @@ from tradingagents.llm_clients.antigravity_cli_client import _configuration_pref
 _configuration_preflight()
 print("Actual subscription-only settings passed; Google sign-in still separate.")
 PY
-unset GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_GENAI_USE_VERTEXAI GOOGLE_GENAI_USE_GCA
-unset GOOGLE_GENAI_USE_ENTERPRISE GOOGLE_APPLICATION_CREDENTIALS GOOGLE_CLOUD_ACCESS_TOKEN
-unset GOOGLE_GEMINI_BASE_URL GOOGLE_CLOUD_PROJECT GOOGLE_CLOUD_PROJECT_ID GOOGLE_CLOUD_QUOTA_PROJECT
-unset GOOGLE_CLOUD_LOCATION GCLOUD_PROJECT CLOUDSDK_CORE_PROJECT AGY_ADC_AUTH
-unset AGY_LLM_GATEWAY_URL AGY_LLM_GATEWAY_API_KEY
-AGY_VERIFY_LOGIN_DIR="$(mktemp -d)"
-(cd "$AGY_VERIFY_LOGIN_DIR" && agy)
+# This helper launches the official TUI, retaining only OS/keyring/SSH variables.
+# /dev/tty keeps login interactive despite the Python heredoc; no tokens are read.
+agy_verified_account_ui() {
+python - <<'PY'
+import os, subprocess, tempfile
+from tradingagents.llm_clients.antigravity_cli_client import catalog_preflight, _child_environment
+executable, _ = catalog_preflight()
+env = _child_environment()
+env.pop("CI", None)
+env.pop("NO_BROWSER", None)
+for key in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
+    if key in os.environ:
+        env[key] = os.environ[key]
+with tempfile.TemporaryDirectory(prefix="tradingagents-agy-account-") as cwd, open("/dev/tty", "r+") as terminal:
+    subprocess.run([executable], cwd=cwd, env=env, stdin=terminal,
+                   stdout=terminal, stderr=terminal, check=True)
+PY
+}
+agy_verified_account_ui
 # Complete the CLI's URL -> local browser -> authorization code -> SSH prompt flow.
-# Use the personal Google AI Pro account; inspect /usage and credits, then /exit.
-rm -rf -- "$AGY_VERIFY_LOGIN_DIR"
-unset AGY_VERIFY_LOGIN_DIR
+# Use the personal Google AI Pro account. Inspect account/plan, /usage, /credits
+# and /config (Use G1 Credits off), then /exit. Do not submit a model prompt here.
 ```
 
 This is the exact remote URL/code procedure in
 [official installation/auth](https://www.antigravity.google/docs/cli/install/).
-No Google tokens are transferred. Run `agy models` to inspect official slugs.
+No Google tokens are transferred. The helper preserves SSH detection without
+inheriting API/Vertex/gateway/custom routing. Both catalogs may change over time;
+Antigravity is not restricted to Gemini names. Catalog presence is not Pro proof.
 
 ### 5. Mandatory admission/status gate, then all live smokes
 
-**The first Antigravity command currently fails intentionally. Stop there on
-this checkpoint. Do not bypass it or run standalone inference as a workaround.**
+Status checks readiness only. All catalog discovery below is non-inference.
+Select each model independently from its own catalog; no fixed GPT/Antigravity
+model is forced. Unknown, unavailable or mismatched models fail without fallback.
 
 ```bash
 tradingagents auth status chatgpt_plan
 tradingagents auth status antigravity_cli
 tradingagents auth models antigravity_cli
-read -r -p 'Antigravity Gemini catalog slug: ' ANTIGRAVITY_LIVE_MODEL
-export ANTIGRAVITY_LIVE_MODEL
+read -r -p 'Antigravity catalog slug (any listed safe family): ' ANTIGRAVITY_LIVE_MODEL
+read -r -p 'Antigravity effort (low/medium/high): ' ANTIGRAVITY_LIVE_EFFORT
+case "$ANTIGRAVITY_LIVE_EFFORT" in low|medium|high) ;; *) exit 1 ;; esac
+export ANTIGRAVITY_LIVE_MODEL ANTIGRAVITY_LIVE_EFFORT
 export ANTIGRAVITY_LIVE_BIN="$HOME/.local/bin/agy"
+export TRADINGAGENTS_LLM_PROVIDER=chatgpt_plan
+export TRADINGAGENTS_QUICK_THINK_PROVIDER=chatgpt_plan
+export TRADINGAGENTS_QUICK_THINK_LLM="$CHATGPT_PLAN_LIVE_MODEL"
+export TRADINGAGENTS_DEEP_THINK_PROVIDER=antigravity_cli
+export TRADINGAGENTS_DEEP_THINK_LLM="$ANTIGRAVITY_LIVE_MODEL"
+export TRADINGAGENTS_ANTIGRAVITY_EFFORT="$ANTIGRAVITY_LIVE_EFFORT"
+mkdir -p results
+export TA_VERIFY_EVIDENCE_DIR="$(mktemp -d "$TA_VERIFY_CHECKOUT/results/subscription-acceptance.XXXXXXXX")"
+python - <<'PY'
+import json, os, subprocess
+from pathlib import Path
+from tradingagents.llm_clients.antigravity_cli_client import _configuration_preflight, VERIFIED_VERSION
+from tradingagents.llm_clients.subscription_registry import subscription_model_options
+quick, deep, effort = (os.environ[key] for key in
+                       ("CHATGPT_PLAN_LIVE_MODEL", "ANTIGRAVITY_LIVE_MODEL", "ANTIGRAVITY_LIVE_EFFORT"))
+for provider, model in (("chatgpt_plan", quick), ("antigravity_cli", deep)):
+    assert model in {slug for _, slug in subscription_model_options(provider)}, "Choose a current listed model"
+settings = _configuration_preflight()  # Checks no API/Vertex/custom routing or policy bypass.
+assert settings["useG1Credits"] is False and "modelProvider" not in settings
+evidence = {"tested_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+            "quick_think_provider": "chatgpt_plan", "quick_think_llm": quick,
+            "deep_think_provider": "antigravity_cli", "deep_think_llm": deep,
+            "antigravity_effort": effort, "cli_version": VERIFIED_VERSION,
+            "useG1Credits": False, "billed_routing_preflight": "passed",
+            "live_entitlement": "PENDING official /usage and live requests"}
+Path(os.environ["TA_VERIFY_EVIDENCE_DIR"], "selected-settings.json").write_text(json.dumps(evidence, indent=2))
+print(json.dumps(evidence, indent=2))  # Safe selection data only, no credentials.
+PY
 RUN_SUBSCRIPTION_LIVE=1 RUN_SUBSCRIPTION_ISOLATION_LIVE=1 \
-  python -m pytest tests/test_subscription_live.py -o addopts='' -m integration -v --tb=short
+  python -m pytest tests/test_subscription_live.py -o addopts='' -m integration -v --tb=short \
+  --junitxml="$TA_VERIFY_EVIDENCE_DIR/live-smokes.xml"
+# Mandatory quota/account evidence AFTER the headless and native schema requests:
+agy_verified_account_ui
+# In the official TUI use /usage (alias /quota), inspect authenticated personal
+# Google AI Pro plan/account plus selected model-family quotas and /config credits
+# off, then /exit. Record that panel evidence privately alongside selected-settings.json.
+# Do not send /usage as a model prompt, parse model-authored identity or read tokens.
+tradingagents auth status antigravity_cli
 ```
 
 With both opt-ins, require **6 actually executed/passed**, zero unexpected skips.
@@ -263,7 +319,12 @@ To omit optional test 6, omit its flag and record **5 passed, 1 skipped** explic
 Live model/profile variables deliberately do not use the TRADINGAGENTS prefix:
 the upstream offline fixture blanks that prefix. Review official quota/credits
 before and after; record entitlement/account/billing evidence privately without
-tokens or authorization codes. If any live check fails, stop the full run.
+tokens or authorization codes. The [official /usage panel](https://www.antigravity.google/docs/cli/commands/usage)
+refreshes model quotas; confirm the signed-in Google AI Pro account/plan in the
+official UI as well. Record chosen ChatGPT model, chosen Antigravity model,
+effort, headless/schema successes, no API/Vertex/custom provider settings and
+`useG1Credits=false`. Dummy-key success or catalog presence alone proves neither
+plan entitlement nor actual billing. If any live check fails, stop the full run.
 
 ### 6. Full AAPL graph and saved Markdown/HTML/settings acceptance
 
@@ -280,11 +341,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.llm_clients.subscription_registry import preflight_subscription
+from tradingagents.llm_clients.subscription_registry import preflight_subscription, subscription_model_options
 
-# Guard the programmatic route too: never spend quick allowance when deep is blocked.
+# Recheck safe setup and current catalog membership before spending model allowance.
 preflight_subscription("antigravity_cli")
 preflight_subscription("chatgpt_plan")
+for provider, variable in (("chatgpt_plan", "CHATGPT_PLAN_LIVE_MODEL"), ("antigravity_cli", "ANTIGRAVITY_LIVE_MODEL")):
+    assert os.environ[variable] in {slug for _, slug in subscription_model_options(provider)}
+assert os.environ["ANTIGRAVITY_LIVE_EFFORT"] in {"low", "medium", "high"}
 
 output = Path("results/subscription-live") / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 output.mkdir(parents=True, mode=0o700)
@@ -294,7 +358,8 @@ config.update({
     "quick_think_llm": os.environ["CHATGPT_PLAN_LIVE_MODEL"],
     "deep_think_provider": "antigravity_cli", "deep_think_llm": os.environ["ANTIGRAVITY_LIVE_MODEL"],
     "backend_url": None, "quick_think_backend_url": None, "deep_think_backend_url": None,
-    "temperature": None, "max_tokens": None, "llm_max_retries": 1, "antigravity_effort": "high",
+    "temperature": None, "max_tokens": None, "llm_max_retries": 1,
+    "antigravity_effort": os.environ["ANTIGRAVITY_LIVE_EFFORT"],
     "max_debate_rounds": 1, "max_risk_discuss_rounds": 1, "checkpoint_enabled": True,
     "results_dir": str(output), "data_cache_dir": str(output / "cache"),
     "memory_log_path": str(output / "memory.md"),
@@ -313,6 +378,9 @@ assert signal == state["final_rating"]
 settings = graph.run_settings()
 assert settings["quick_think_provider"] == "chatgpt_plan"
 assert settings["deep_think_provider"] == "antigravity_cli"
+assert settings["quick_think_llm"] == os.environ["CHATGPT_PLAN_LIVE_MODEL"]
+assert settings["deep_think_llm"] == os.environ["ANTIGRAVITY_LIVE_MODEL"]
+assert settings["antigravity_effort"] == os.environ["ANTIGRAVITY_LIVE_EFFORT"]
 assert set(settings["analysts"]) == {"market", "social", "news", "fundamentals"}
 report = graph.save_reports(state, "AAPL", save_path=output / "report", html=True)
 assert report.is_file() and report.with_suffix(".html").is_file()
@@ -320,12 +388,16 @@ assert report.is_file() and report.with_suffix(".html").is_file()
     "trade_date": os.environ["VERIFY_TRADE_DATE"], "final_rating": state["final_rating"],
     "signal": signal, "run_settings": settings, "markdown": str(report),
     "html": str(report.with_suffix(".html")),
+    "smoke_quota_evidence": os.environ["TA_VERIFY_EVIDENCE_DIR"],
 }, indent=2), encoding="utf-8")
 print("Final rating:", state["final_rating"])
 print("Saved report:", report)
 print("HTML report:", report.with_suffix(".html"))
 print("Acceptance settings:", output / "verification.json")
 PY
+agy_verified_account_ui
+# Inspect /usage again after the full AAPL run and save private quota evidence.
+# Exit with /exit; do not send any additional model request.
 ```
 
 Review all saved sections and actual usage, not just process exit. Only mark

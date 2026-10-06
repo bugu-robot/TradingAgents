@@ -82,7 +82,7 @@ are retained; changes address demonstrated storage/protocol/schema issues.
 | A5 | P2 | ChatGPT malformed/coercible structured values could be accepted by Pydantic or escape as ValueError, causing an extra plain request. | Strict JSON, independent JSON Schema validation with a no-fetch registry, strict Pydantic JSON validation and terminal redacted SubscriptionError. Five malformed/schema cases prove exactly one request and no free-text fallback. Explicit include_raw retains safe parsing_error behavior. |
 | A6 | P2 | Nonzero CLI exits before init lost auth classification; cancellation after output pipes closed could wait until the long request deadline. | Classify nonzero exit diagnostics safely; poll cancellation/deadline while waiting for exit. Regressions confirm auth classification without raw-secret leakage and child reaping after closed pipes. |
 | A7 | P2 | Action metadata recognition missed camelCase/plugin/skill spellings and confused structured property names with execution metadata. | Normalize reviewed metadata keys and reject all action namespaces; schema/structured-value payloads remain data. Tests cover MCP/plugins/subagents/commands and harmless structured fields named commands/tool_calls. |
-| A8 | P1 | Proposed `--print /help` authentication probe assumes a headless account report not promised by official docs; it could be a model prompt rather than trusted identity evidence. | Remove the speculative probe and all Pro-report parsing. Authentication always fails before inference until a supported official non-inference preflight is implemented/reviewed. A configured/version-verified CLI regression proves only --version/--help run; no prompt/Google token inspection or bypass exists. |
+| A8 | P1 | Proposed `--print /help` authentication probe assumes a headless account report not promised by official docs; it could be a model prompt rather than trusted identity evidence. | Removed the speculative probe and all Pro-report parsing. The interim unconditional gate in d6865f1/f0f6358 was subsequently corrected by B1 below: use documented cached-account execution, not an invented attestation interface. No speculative prompt, Google token inspection or bypass exists. |
 
 All A1–A8 are corrected before live verification. No unresolved P1/P2 code finding
 is accepted. OAuth state, nonce, S256 PKCE, signature/issuer/audience/expiry and
@@ -97,16 +97,51 @@ contamination, shared customization/policy, private workspace permissions,
 file/command/URL denial, MCP/plugins/skills/subagents, strict init, action
 metadata, JSON Schema, terminal failure, bounded retries and process cleanup.
 No global settings or administrator policy are automatically overwritten or
-hidden. Final test evidence: **342 subscription offline cases passed**;
-**1,605 whole-fork tests passed; 1,263 clean-baseline tests passed**, with the
-same 20 upstream warnings and no failures. Six live cases skip
-by default. Skips are not passes.
+hidden. The original migration checkpoint recorded 342 subscription/1,605 full
+tests; the correction results below supersede those counts.
 
-Two **acceptance/official-interface blockers**, separate from corrected code
-findings, remain: there is no reviewed official non-inference headless Pro
-preflight, and init-before-input ordering is unverified. Authentication admission
-now unconditionally fails before inference; login cannot unlock it. Prompt instructions and mock
-metadata are not proof of sandboxing, entitlement or billing. Actual CLI startup
-still owns its internal configuration/keyring/log files; the zero-tool boundary
-constrains model actions. A future CLI version requires another review. No live
-subscription use or full AAPL run has been claimed; Draft PR #1 stays unmerged.
+## Admission/catalog/model-selection correction review — 2026-10-06
+
+Reviewed user-reported f0f6358 findings and fixes published in 3d35c60/9b44b80.
+Reopened current official [headless](https://www.antigravity.google/docs/cli/headless/),
+[installation/auth](https://www.antigravity.google/docs/cli/install/),
+[models](https://www.antigravity.google/docs/models/),
+[credits](https://www.antigravity.google/docs/cli/credits/),
+[settings](https://www.antigravity.google/docs/settings?tab=cli) and
+[interactive /usage](https://www.antigravity.google/docs/cli/commands/usage).
+OpenAI OAuth behavior is unchanged by this correction; existing account catalog,
+tool-call, SSE, schema and protected-token regressions still pass.
+
+| ID | Severity | Finding | Fix and offline evidence |
+| --- | --- | --- | --- |
+| B1 | P1 functional | Authentication always raises, so even a valid cached official Google sign-in can never execute. Lack of a separate Pro attestation is incorrectly treated as an interface blocker. | Remove unconditional gate. Real settings/binary admission permits documented cached-account execution; CLI owns authentication/refresh and terminal auth errors. No invented account probe/token reading. Complete fake-executable admission + catalog + successful stream tests cover each family without bypassing preflight. Actual Pro entitlement remains a live /usage acceptance requirement. |
+| B2 | P2 | Catalog discovery calls the blocked inference preflight, preventing documented `agy models`. | Separate catalog preflight; run only version/help/models probes with no model request. CLI auth models regression succeeds, records only models, and warns catalog is not entitlement proof. Unsafe settings still prevent catalog process startup. |
+| B3 | P2 | Gemini-only syntax and parsing rejects official catalog models from Claude/other families. | Conservative family-independent slug syntax plus fresh official catalog membership before inference. Reject malformed/duplicate catalogs, path/flag/shell/custom IDs and unlisted models. Gemini/Claude/GPT-OSS fixtures pass exact --model; mismatched init or unavailable CLI selection fails without fallback. |
+| B4 | P2 | Subscription model menu offers arbitrary custom IDs; one env model hides both tier choices; effort is absent from selection/run settings. | Independent Quick/Deep catalog menus with no custom entry; each subscription tier requires its own unattended model. Capability-driven low/medium/high effort passes through run config/CLI and saved settings. Existing API env/default regressions remain unchanged. |
+| B5 | P2 | Waiting for init before writing stdin relies on an undocumented ordering and can deadlock a supported input-first CLI. | Use documented stdin-first operation under prevalidated settings, sanitized environment and scoped zero-tool agent. Validate init as soon as received; accept no output before valid init, terminal SUCCESS and exit 0. Unsafe input-first init and autonomous metadata are rejected; real fake-process tests verify cleanup. |
+| B6 | P2 | Immediate closed stdin can mask cached-auth failure as BrokenPipe instead of safely classifying terminal diagnostics. | Drain stderr/terminal events after a broken input pipe, then classify nonzero exit safely. Auth failure before init remains terminal and raw diagnostics never escape. |
+| B7 | P2 | Strict-only permission label may reject the officially documented request-review init even with strict settings and zero tools. | Require strict real settings + universal denies; admit strict/request-review init only with empty tools and exact isolated model/agent/schema. Reject always-proceed/unknown modes. Complete admission test exercises documented request-review output. Billing-route checks remain identical. |
+
+Focused security review found **no open P1/P2 code finding** after corrections.
+Reviewed subscription-only settings and every retry, custom/provider/Vertex/ADC
+rejection, allowlisted environment, no global policy bypass, current catalog
+membership, exact model/no fallback, private workspace/agent/logs, zero-tool init,
+action metadata, terminal schema validation and error classification, subprocess
+deadlines/cancellation/group cleanup, and raw diagnostic redaction. Selected
+models/effort are safe run metadata; credentials remain CLI/app owned.
+
+Final evidence: **402 subscription offline tests passed; 1,665 full-fork tests
+passed, 7 integration deselected, 100 subtests; 1,263 clean v0.6.0 baseline tests
+passed, 1 integration deselected, 99 subtests**. Both full suites retain the same
+20 upstream warnings. Ruff, diff-check, compile/import and dependency check pass.
+Six LIVE tests explicitly skip by default; **zero executed**, no live passes.
+
+There is no unconditional admission or catalog blocker. Remaining acceptance
+checks require real account credentials and service behavior: actual zero-tool
+scoping/init/schema, selected-model Google AI Pro quota in official /usage,
+Plus plan authorization, and the complete AAPL report. Catalog/local readiness,
+prompt instructions and mocked metadata do not prove entitlement or billing.
+Strict startup configuration provides the preventive boundary; metadata rejection
+cannot undo actions. The trusted official CLI still owns internal configuration,
+keyring, logs and service requests. A future CLI version requires another review.
+Draft PR #1 remains unmerged and production acceptance is pending.

@@ -66,7 +66,10 @@ subscription entitlement of the selected model.
 
 Submit input according to the official programmatic example, then validate init
 before accepting the terminal SUCCESS result. Exact selected model, scoped
-agent, private cwd, empty tools, strict permissions and schema must match. Reject
+agent, private cwd, empty tools, strict/request-review mode and schema must match.
+The real settings still require strict permissions and universal denies; the
+headless guide documents request-review init, so that label alone is not an
+unsafe downgrade. Always-proceed/unknown modes are rejected. Reject
 autonomous execution metadata and any error; never downgrade or switch to API
 billing. Real init/scoping/schema compatibility and Google AI Pro `/usage` quota
 evidence are still LIVE PENDING. No unconditional authentication blocker remains.

@@ -67,12 +67,12 @@ tradingagents auth status antigravity_cli
 tradingagents auth models antigravity_cli
 ```
 
-These commands check the real global configuration and reviewed executable, then
-return the current official-interface blocker. Version 1.2.17 has no documented
-non-inference headless personal Pro preflight; `/help` is a TUI panel. The adapter
-**always blocks inference** until a supported official preflight is implemented
-and reviewed. Login alone cannot fix this. Init-before-input ordering is also
-unverified. A model-authored identity report or local attestation is never used.
+Status checks real global configuration and the reviewed executable; it does not
+claim to verify Google login, plan or quota. Catalog discovery separately executes
+official `agy models`, without any model turn. Actual headless requests use the
+CLI's cached credentials and documented auth/error/status behavior. No separate
+Pro-attestation endpoint, model-authored identity probe or token reading is used.
+Record official interactive `/usage` plan/quota after smoke requests for acceptance.
 
 Subscription-only operation requires explicit `useG1Credits=false`, strict
 permissions, sandbox enabled, non-workspace access disabled and all action
@@ -85,8 +85,10 @@ Child processes inherit only reviewed OS/keyring environment variables. Google,
 Gemini, Vertex, gateway, API credential and custom routing variables cannot reach
 them. A private temporary workspace contains an explicitly scoped tool-free
 main agent; no arbitrary evidence file import, slash/skill expansion or unsafe
-permission flag is enabled. The prompt is sent only after zero-tool strict init
-matches the workspace, agent, model and schema. Autonomous action metadata,
+permission flag is enabled. Input follows the documented stdin-first flow; no
+output is accepted before zero-tool init matches workspace, agent, model and
+schema. Real settings must remain strict with all actions denied; init may report
+strict or the documented request-review mode, never always-proceed. Autonomous action metadata,
 unknown steps and incomplete responses cause rejection and process-group cleanup.
 
 Deep manager Pydantic schemas become native CLI JSON Schema arguments. Complete
@@ -108,7 +110,7 @@ config.update({
     "quick_think_provider": "chatgpt_plan",
     "quick_think_llm": "<slug from ChatGPT account catalog>",
     "deep_think_provider": "antigravity_cli",
-    "deep_think_llm": "<gemini slug from agy models>",
+    "deep_think_llm": "<safe catalog slug from agy models>",
     "backend_url": None,
     "quick_think_backend_url": None,
     "deep_think_backend_url": None,
@@ -126,6 +128,19 @@ CLI equivalents use `TRADINGAGENTS_QUICK_THINK_PROVIDER`,
 required). Subscription providers reject custom URLs, sampling settings and
 output-token caps. A centralized registry admits capabilities; no hybrid router
 or scattered agent-name conditionals are needed.
+
+Quick and Deep selections are independent. ChatGPT model choices use the signed-in
+account catalog; Antigravity choices use `agy models`, including Gemini, Claude
+and other returned families. Subscription menus offer no arbitrary custom API ID.
+Conservative safe syntax and fresh Antigravity catalog membership are required
+before each inference; the exact selected slug is passed using `--model`. Unknown
+or unavailable models fail without switching. Availability can change and is not
+plan entitlement evidence. Selected Antigravity effort is also saved in run settings.
+
+For interactive model menus, set the existing tier provider variables and leave
+each tier model variable unset. For unattended runs, explicitly set both model
+variables and optional effort. A Quick model override never hides the Deep
+subscription catalog; ordinary API-provider env/default behavior is retained.
 
 ## Verification and maintenance
 

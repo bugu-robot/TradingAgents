@@ -67,12 +67,16 @@ Final acceptance must record the authenticated plan/quota in official `/usage`
 after the smoke requests. Catalog presence is not entitlement evidence.
 
 The stream follows the documented stdin-first protocol. Validate the exact
-isolated cwd, selected model/agent/schema, strict permissions and empty tool list
+isolated cwd, selected model/agent/schema, strict/request-review mode and empty tool list
 as soon as init arrives; reject any unexpected action or terminal status. Accept
 only a complete `SUCCESS` result after validated init and exit 0. The protocol
 does not promise init before stdin, so startup configuration and permissions
 provide the preventive boundary; rejecting metadata cannot undo earlier actions.
 Actual CLI scoping and init/schema compatibility remain live acceptance checks.
+
+Real settings always require strict permissions with universal denies. Init may
+report strict or the documented request-review mode; neither permits any tools
+or bypasses those settings. Always-proceed and unknown modes are rejected.
 
 ## Independent model selection
 

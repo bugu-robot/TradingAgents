@@ -145,3 +145,14 @@ enforce review policies. Admit strict or request-review metadata only under the
 same strict real settings, universal denies and zero tools; reject always-proceed
 and unknown modes. Do not manufacture a compatibility blocker by requiring an
 undocumented strict-only label. This does not relax any billing-route check.
+
+## 2026-10-06 — Record offline readiness separately from live entitlement acceptance
+
+Correction validation passed 1,665 full-fork / 402 subscription offline cases;
+the clean v0.6.0 baseline passed 1,263. Six live cases remain skipped, with zero
+executed. B1–B7 findings are fixed and documented. The consolidated Ubuntu
+session records independent selected models/effort, headless/schema success,
+official interactive /usage plan/quota after requests, safe routing/credits
+settings and the full all-node AAPL Markdown/HTML report. Local preflight and
+catalog presence are not plan proof, and future model availability may change.
+Keep Draft PR #1 unmerged and production acceptance pending that evidence.
