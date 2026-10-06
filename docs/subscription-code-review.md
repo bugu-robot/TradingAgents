@@ -145,3 +145,10 @@ Strict startup configuration provides the preventive boundary; metadata rejectio
 cannot undo actions. The trusted official CLI still owns internal configuration,
 keyring, logs and service requests. A future CLI version requires another review.
 Draft PR #1 remains unmerged and production acceptance is pending.
+
+Verification workflow correction: the Google TUI helper originally opened a
+terminal in buffered read/write mode, which requires seeking. Use unbuffered
+binary `/dev/tty` and require a controlling interactive SSH terminal. A local
+PTY subprocess check proved stdin/stdout passthrough; this Work runtime has no
+accessible controlling `/dev/tty`, and no actual sign-in was attempted. This
+changes verification instructions only; provider regression counts are unchanged.

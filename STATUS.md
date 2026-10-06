@@ -5,7 +5,7 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 - Fork: `bugu-robot/TradingAgents`; upstream: `TauricResearch/TradingAgents`.
 - Baseline: TradingAgents **v0.6.0**, `1394a3f72aa4393e1a98f51b382434c4b4c2d972`.
 - Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), open, Draft, unmerged.
-- Latest published checkpoint before this phase: `9b44b8091b5092ea8af5e4d480ba44aaedea8b54`.
+- Latest published checkpoint before this phase: `1eeda4467fb609218821e06c3d4f547b0fd1fc4b`.
   Resolve the current tip with `git rev-parse origin/feat/subscription-providers`.
 - Fetched origin/upstream and confirmed clean starting state, existing PR and
   v0.6.0 baseline; no work discarded and no main/upstream mutation.
@@ -44,6 +44,9 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
   check plus fresh non-dev installed runtime/CLI import passed. Ubuntu
   instructions statically checked: 8 Bash + 1 JSON blocks,
   6 Python heredocs; no login/model command executed during those checks.
+- SSH account-TUI helper corrected to unbuffered terminal I/O and checked with
+  a local PTY child. A controlling SSH terminal is required; this Work runtime
+  has no accessible controlling `/dev/tty`, so this is not live sign-in evidence.
 - VERIFICATION.md now provides one complete Ubuntu session: pinned official CLI,
   OpenAI local OAuth/VM transfer, sanitized interactive Google SSH sign-in,
   independent model/effort selection, six opt-in smokes, official /usage evidence

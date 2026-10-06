@@ -93,7 +93,9 @@ cannot independently prove billing: inspect official account usage as well.
 
 Use Ubuntu amd64, Python 3.12, a dedicated personal account environment and an
 accessible Linux Secret Service/D-Bus keyring. Existing admin policy is never
-bypassed. If keyring access is unavailable, follow the
+bypassed. Run inside an interactive SSH terminal with a controlling TTY (use
+`ssh -t ubuntu@your-vm-host` if needed), so the helper can open `/dev/tty`.
+If keyring access is unavailable, follow the
 [official troubleshooting](https://www.antigravity.google/docs/cli/troubleshooting/);
 do not export/copy secure Google tokens. These steps use one verification session
 with a local OAuth/browser companion, not separate repeated user tests.
@@ -230,7 +232,8 @@ _configuration_preflight()
 print("Actual subscription-only settings passed; Google sign-in still separate.")
 PY
 # This helper launches the official TUI, retaining only OS/keyring/SSH variables.
-# /dev/tty keeps login interactive despite the Python heredoc; no tokens are read.
+# Unbuffered /dev/tty keeps login interactive despite the Python heredoc;
+# terminals are not seekable. No tokens are read.
 agy_verified_account_ui() {
 python - <<'PY'
 import os, subprocess, tempfile
@@ -242,7 +245,7 @@ env.pop("NO_BROWSER", None)
 for key in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"):
     if key in os.environ:
         env[key] = os.environ[key]
-with tempfile.TemporaryDirectory(prefix="tradingagents-agy-account-") as cwd, open("/dev/tty", "r+") as terminal:
+with tempfile.TemporaryDirectory(prefix="tradingagents-agy-account-") as cwd, open("/dev/tty", "r+b", buffering=0) as terminal:
     subprocess.run([executable], cwd=cwd, env=env, stdin=terminal,
                    stdout=terminal, stderr=terminal, check=True)
 PY
