@@ -1,16 +1,17 @@
 """Subscription providers reuse the upstream quick/deep factory and graph."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 import typer
 
-from cli import selections
+from cli import prompts, selections
 from cli.prompts import _llm_provider_table, ensure_api_key
 from tradingagents import default_config
 from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
-from tradingagents.llm_clients import antigravity_cli_client, factory
+from tradingagents.llm_clients import antigravity_cli_client, factory, subscription_registry
 from tradingagents.llm_clients.antigravity_cli_client import AntigravityCLIChatModel
 from tradingagents.llm_clients.chatgpt_plan_client import ChatGPTPlanChatModel
 from tradingagents.llm_clients.subscription_errors import SubscriptionError
@@ -167,3 +168,106 @@ def test_removed_gemini_cli_provider_is_not_registered():
     assert "gemini_cli" not in SUBSCRIPTION_PROVIDERS
     with pytest.raises(ValueError, match="Unsupported"):
         factory.create_llm_client("gemini_cli", "auto")
+
+
+@pytest.mark.parametrize('deep_model', ['gemini-3.1-pro-high', 'claude-sonnet-4-6-thinking'])
+def test_cli_independent_account_model_menus_have_no_custom_api_choice(monkeypatch, deep_model):
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', config())
+    monkeypatch.delenv('TRADINGAGENTS_QUICK_THINK_LLM', raising=False)
+    monkeypatch.delenv('TRADINGAGENTS_DEEP_THINK_LLM', raising=False)
+    discovered, menus = [], []
+    def catalog(provider):
+        discovered.append(provider)
+        if provider == 'chatgpt_plan':
+            return [('Account GPT A', 'account-gpt-a'), ('Account GPT B', 'account-gpt-b')]
+        return [('CLI Gemini', 'gemini-3.1-pro-high'), ('CLI Claude', 'claude-sonnet-4-6-thinking')]
+    def menu(*args, **kwargs):
+        values = [choice.value for choice in kwargs['choices']]
+        menus.append(values)
+        assert 'custom' not in values
+        return SimpleNamespace(ask=lambda: 'account-gpt-b' if len(menus) == 1 else deep_model)
+    monkeypatch.setattr(subscription_registry, 'subscription_model_options', catalog)
+    monkeypatch.setattr(prompts.questionary, 'select', menu)
+    quick, deep = selections._select_thinking_models('openai', {})
+    assert (quick, deep) == ('account-gpt-b', deep_model)
+    assert discovered == ['chatgpt_plan', 'antigravity_cli']
+    assert menus == [['account-gpt-a', 'account-gpt-b'], ['gemini-3.1-pro-high', 'claude-sonnet-4-6-thinking']]
+
+
+def test_one_tiers_env_model_does_not_suppress_other_subscription_menu(monkeypatch):
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', config(quick_think_llm='selected-account-gpt'))
+    monkeypatch.setenv('TRADINGAGENTS_QUICK_THINK_LLM', 'selected-account-gpt')
+    monkeypatch.delenv('TRADINGAGENTS_DEEP_THINK_LLM', raising=False)
+    monkeypatch.setattr(selections, 'select_shallow_thinking_agent', lambda *a: pytest.fail('explicit quick model wins'))
+    asked = []
+    def deep(provider, default=None):
+        asked.append(provider)
+        return 'claude-sonnet-4-6-thinking'
+    monkeypatch.setattr(selections, 'select_deep_thinking_agent', deep)
+    assert selections._select_thinking_models('openai', {}) == ('selected-account-gpt', 'claude-sonnet-4-6-thinking')
+    assert asked == ['antigravity_cli']
+
+
+def test_subscription_tier_can_choose_its_catalog_without_env_model(monkeypatch):
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', config())
+    monkeypatch.delenv('TRADINGAGENTS_QUICK_THINK_LLM', raising=False)
+    monkeypatch.delenv('TRADINGAGENTS_DEEP_THINK_LLM', raising=False)
+    checked = []
+    monkeypatch.setattr(selections, 'ensure_api_key', checked.append)
+    selections._check_tier_providers('openai')
+    assert checked == ['chatgpt_plan', 'antigravity_cli']
+
+
+@pytest.mark.parametrize('effort', ['low', 'medium', 'high'])
+def test_independent_tier_env_models_effort_factory_and_saved_settings(monkeypatch, effort):
+    from cli import run
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+
+    env = {'QUICK_THINK_PROVIDER': 'chatgpt_plan', 'QUICK_THINK_LLM': 'account-selected-gpt',
+           'DEEP_THINK_PROVIDER': 'antigravity_cli', 'DEEP_THINK_LLM': 'claude-sonnet-4-6-thinking',
+           'ANTIGRAVITY_EFFORT': effort, 'LLM_PROVIDER': 'chatgpt_plan'}
+    for key, value in env.items():
+        monkeypatch.setenv('TRADINGAGENTS_' + key, value)
+    conf = default_config.build_default_config()
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', conf)
+    monkeypatch.setattr(run, 'DEFAULT_CONFIG', conf)
+    quick, deep = selections._select_thinking_models('chatgpt_plan', {})
+    knobs = selections._subscription_efforts('chatgpt_plan')
+    chosen = dict(quick_think_llm=quick, deep_think_llm=deep, research_depth=1,
+                  llm_provider='chatgpt_plan', backend_url=None, **knobs)
+    cfg = run._build_run_config(chosen, None)
+    assert factory.create_tier_client(cfg, 'quick').get_llm().model_name == 'account-selected-gpt'
+    llm = factory.create_tier_client(cfg, 'deep').get_llm()
+    assert llm.model_name == 'claude-sonnet-4-6-thinking' and llm.effort == effort
+    graph = object.__new__(TradingAgentsGraph)
+    graph.config, graph.selected_analysts = cfg, ('market',)
+    saved = graph.run_settings()
+    assert saved['quick_think_llm'] == quick and saved['deep_think_llm'] == deep
+    assert saved['antigravity_effort'] == effort
+
+
+def test_subscription_effort_prompt_uses_central_documented_choices(monkeypatch):
+    def menu(*args, **kwargs):
+        assert [choice.value for choice in kwargs['choices']] == ['low', 'medium', 'high']
+        return SimpleNamespace(ask=lambda: 'medium')
+    monkeypatch.setattr(prompts.questionary, 'select', menu)
+    assert prompts.ask_subscription_effort('antigravity_cli') == 'medium'
+
+
+def test_unattended_subscription_tiers_require_their_own_models(monkeypatch):
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', config(llm_provider='chatgpt_plan'))
+    monkeypatch.setenv('TRADINGAGENTS_QUICK_THINK_LLM', 'account-gpt')
+    monkeypatch.delenv('TRADINGAGENTS_DEEP_THINK_LLM', raising=False)
+    assert 'TRADINGAGENTS_DEEP_THINK_LLM' in selections.unattended_gaps({})
+
+
+@pytest.mark.parametrize('effort', ['max', 'xhigh', 'invalid'])
+def test_unreviewed_effort_rejected_before_subscription_request(monkeypatch, effort):
+    monkeypatch.setattr(selections, 'DEFAULT_CONFIG', config(antigravity_effort=effort))
+    monkeypatch.setenv('TRADINGAGENTS_ANTIGRAVITY_EFFORT', effort)
+    with pytest.raises(typer.Exit):
+        selections._subscription_efforts('openai')
+    llm = factory.create_tier_client(config(antigravity_effort=effort), 'deep').get_llm()
+    monkeypatch.setattr(antigravity_cli_client, 'preflight', lambda *a: pytest.fail('reject effort before any process'))
+    with pytest.raises(ValueError, match='low/medium/high'):
+        llm.invoke('blocked')

@@ -131,3 +131,17 @@ refresh catalog membership before inference and pin `--model` without fallback.
 ChatGPT Quick models independently come from its signed-in account catalog.
 Existing Quick/Deep provider/model env variables and Antigravity low/medium/high
 effort map directly to the v0.6.0 factory; no hybrid router is introduced.
+
+## 2026-10-06 — Keep model menus and effort within centralized capabilities
+
+Each subscription tier uses its own discovered catalog and has no arbitrary
+custom-ID menu entry. A single tier's explicit model cannot suppress the other
+tier's catalog. Ordinary API env/default behavior is preserved. Central effort
+choices drive Antigravity low/medium/high selection, CLI arguments and saved run
+settings. Local auth status reports configuration/binary readiness only.
+
+The official headless guide documents request-review init, and strict settings
+enforce review policies. Admit strict or request-review metadata only under the
+same strict real settings, universal denies and zero tools; reject always-proceed
+and unknown modes. Do not manufacture a compatibility blocker by requiring an
+undocumented strict-only label. This does not relax any billing-route check.

@@ -16,6 +16,7 @@ class SubscriptionProvider:
     unsupported_parameters: frozenset[str]
     knob_provider: str | None = None
     configuration_parameters: tuple[tuple[str, str], ...] = ()
+    effort_choices: tuple[str, ...] = ()
 
 
 SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
@@ -27,11 +28,12 @@ SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
         knob_provider="openai",
     ),
     "antigravity_cli": SubscriptionProvider(
-        label="Antigravity CLI (Google AI Pro; deep only; activation blocked)",
+        label="Antigravity CLI (Google AI Pro; deep only)",
         module="antigravity_cli_client", client_class="AntigravityCLIClient",
         tool_calls=False, structured_output="native_json_schema",
         unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),
         configuration_parameters=(("antigravity_effort", "effort"),),
+        effort_choices=("low", "medium", "high"),
     ),
 }
 

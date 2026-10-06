@@ -168,6 +168,8 @@ def _diagnostic_error(stdout: str, stderr: str, code: int) -> SubscriptionError:
         kind, message = "eligibility", "This Google account/model is not entitled to the required Antigravity subscription usage."
     elif any(x in text for x in ("authentication", "unauthenticated", "invalid_grant", "not signed in", "sign in", "login required", "401")):
         kind, message = "auth", "Antigravity cached Google sign-in is unavailable. Run agy interactively using the official SSH sign-in procedure."
+    elif any(x in text for x in ("invalid model selection", "unknown model", "not recognized as a known model", "model unavailable")):
+        kind, message = "configuration", "Antigravity rejected the pinned model. Refresh agy models and choose a listed available slug; no model fallback is permitted."
     elif any(x in text for x in ("rate limit", "ratelimit", "429", "model_capacity_exhausted")):
         kind, message = "rate_limit", "Antigravity is temporarily rate limited."
     elif any(x in text for x in ("permission denied", "policy", "403")):
@@ -416,7 +418,10 @@ class _Stream:
             identity = body.get("conversation_id")
             if not isinstance(identity, str) or not identity:
                 raise _failure("Antigravity initialization has no conversation identity.", "malformed_output")
-            if (payload.get("tools") != [] or payload.get("permission_mode") != "strict"
+            # Headless documents request-review as its effective mode; strict
+            # settings enforce review too. Neither label overrides the required
+            # strict config, universal deny rules or an empty tool list.
+            if (payload.get("tools") != [] or payload.get("permission_mode") not in ("strict", "request-review")
                     or payload.get("cwd") != self.cwd or payload.get("model") != self.model
                     or payload.get("agent") != self.agent or payload.get("json_schema") != self.schema):
                 raise _failure("Antigravity did not initialize the required tool-free, strict, pinned-model isolated agent/schema.", "capability")

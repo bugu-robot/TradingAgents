@@ -87,6 +87,13 @@ def _build_run_config(selections: dict, checkpoint: bool | None) -> dict:
     config["google_thinking_level"] = selections.get("google_thinking_level")
     config["openai_reasoning_effort"] = selections.get("openai_reasoning_effort")
     config["anthropic_effort"] = selections.get("anthropic_effort")
+    from tradingagents.llm_clients.subscription_registry import subscription_spec
+    for tier in ("quick", "deep"):
+        spec = subscription_spec(config.get(f"{tier}_think_provider") or config["llm_provider"])
+        if spec:
+            for key, _ in spec.configuration_parameters:
+                if key in selections:
+                    config[key] = selections[key]
     config["output_language"] = selections.get("output_language", "English")
     # --checkpoint/--no-checkpoint overrides only when explicitly given; omitting
     # the flag preserves TRADINGAGENTS_CHECKPOINT_ENABLED / the default (#976).

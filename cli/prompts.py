@@ -316,8 +316,6 @@ def _select_model(provider: str, mode: str, default=None) -> str:
     options = subscription_model_options(provider)
     if options is None:
         options = get_model_options(provider, mode)
-    else:
-        options = [*options, ("Custom model ID", "custom")]
 
     choice = questionary.select(
         f"Select Your [{mode.title()}-Thinking LLM Engine]:",
@@ -354,6 +352,23 @@ def select_shallow_thinking_agent(provider, default=None) -> str:
 def select_deep_thinking_agent(provider, default=None) -> str:
     """Select deep thinking llm engine using an interactive selection."""
     return _select_model(provider, "deep", default)
+
+
+def ask_subscription_effort(provider: str, default=None) -> str:
+    """Select only the effort values admitted by this transport's capabilities."""
+    from tradingagents.llm_clients.subscription_registry import subscription_spec
+    spec = subscription_spec(provider)
+    if spec is None or not spec.effort_choices:
+        raise ValueError("This subscription provider has no supported effort selector.")
+    choice = questionary.select(
+        f"Select {spec.label} effort:",
+        choices=[questionary.Choice(value.title(), value=value) for value in spec.effort_choices],
+        default=default if default in spec.effort_choices else "medium",
+    ).ask()
+    if choice not in spec.effort_choices:
+        console.print("[red]No supported subscription effort selected. Exiting.[/red]")
+        raise typer.Exit(code=1)
+    return choice
 
 
 def _llm_provider_table() -> list[tuple[str, str, str | None]]:

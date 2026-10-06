@@ -87,11 +87,12 @@ def antigravity():
         pytest.fail("Set ANTIGRAVITY_LIVE_MODEL to a slug from tradingagents auth models antigravity_cli.")
     return create_llm_client("antigravity_cli", model,
                              executable=os.environ.get("ANTIGRAVITY_LIVE_BIN"),
+                             effort=os.environ.get("ANTIGRAVITY_LIVE_EFFORT", "medium"),
                              max_retries=0, timeout=180).get_llm()
 
 
 def test_antigravity_live_google_ai_pro_headless_text(antigravity):
-    """LIVE 4: requires positive Pro evidence and safe init before inference."""
+    """LIVE 4: cached-account execution; plan/quota needs separate /usage evidence."""
     llm = antigravity
     result = llm.invoke([SystemMessage("Use only supplied text. Return the marker requested in the latest message."),
                          HumanMessage("Marker SUBSCRIPTION_SMOKE_OK"), AIMessage("Understood."),
@@ -99,6 +100,8 @@ def test_antigravity_live_google_ai_pro_headless_text(antigravity):
     assert "SUBSCRIPTION_SMOKE_OK" in result.content
     assert not result.tool_calls and result.response_metadata["provider"] == "antigravity_cli"
     assert result.response_metadata["autonomous_tools"] is False
+    assert result.response_metadata["model_name"] == llm.model_name
+    assert result.response_metadata["effort"] == llm.effort
 
 
 def test_antigravity_live_native_json_schema(antigravity):

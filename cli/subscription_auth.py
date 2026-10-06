@@ -41,7 +41,7 @@ def sign_in(provider: str = typer.Argument("chatgpt_plan"),
 
 @app.command("status")
 def status(provider: str = typer.Argument("chatgpt_plan")):
-    """Read-only authentication preflight; does not consume model quota."""
+    """Read-only local preflight; CLI-owned live authentication is separate."""
     try:
         label = preflight_subscription(provider)
         if label is None:
@@ -49,8 +49,10 @@ def status(provider: str = typer.Argument("chatgpt_plan")):
         if provider == "chatgpt_plan":
             typer.echo(json.dumps(ChatGPTAuthStore().status()))
         else:
-            typer.echo(f"{label}: strict configuration and CLI personal Pro account checks passed. "
-                       "This preflight does not prove live inference, quota or billing; live validation remains required.")
+            typer.echo(f"{label}: subscription-only configuration and reviewed CLI checks passed. "
+                       "Cached Google sign-in is checked by the CLI during the actual request. "
+                       "This local check does not prove login, plan entitlement or quota; "
+                       "record official interactive /usage evidence after live smokes.")
     except (SubscriptionError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None
@@ -65,6 +67,8 @@ def models(provider: str = typer.Argument("chatgpt_plan")):
             raise ValueError("Choose a registered subscription provider.")
         for display, slug in options:
             typer.echo(f"{slug}\t{display}")
+        typer.echo("Catalog availability alone does not prove subscription entitlement. "
+                   "Complete the live acceptance checks in VERIFICATION.md.", err=True)
     except (SubscriptionError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None

@@ -5,7 +5,7 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 - Fork: `bugu-robot/TradingAgents`; upstream: `TauricResearch/TradingAgents`.
 - Baseline: TradingAgents **v0.6.0**, `1394a3f72aa4393e1a98f51b382434c4b4c2d972`.
 - Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), open, Draft, unmerged.
-- Latest published checkpoint before this phase: `f0f63587b1b0876c2802958aca74008db23a4dd2`.
+- Latest published checkpoint before this phase: `3d35c607b083c8a48b475420dcd0c12a4cb6f211`.
   Resolve the current tip with `git rev-parse origin/feat/subscription-providers`.
 - Fetched origin/upstream and confirmed clean starting state, existing PR and
   v0.6.0 baseline; no work discarded and no main/upstream mutation.
@@ -19,14 +19,21 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
   requests no model turn. Safe syntax plus fresh catalog membership admits
   Gemini, Claude and other returned families; unknown/custom IDs fail closed.
 - Stream input now follows official stdin-first behavior. Init must validate
-  isolated cwd, exact model/agent/schema, strict permissions and empty tools
+  isolated cwd, exact model/agent/schema, strict/request-review mode and empty tools
   before accepting terminal SUCCESS/exit 0. Action metadata remains rejected.
 - API/provider/Vertex/ADC/custom routing, credits overage, policy/customizations
   and child environment isolation remain enforced. No global settings changed.
-- Targeted correction tests: **254 passed** (Antigravity + routing), Ruff on
-  changed Python files and `git diff --check` passed.
-- Independent interactive tier model/effort UX, live evidence commands,
-  final focused review and full regression rerun are the next phase.
+- Independent subscription model menus now use each tier's account catalog;
+  no custom API model choice is offered. A Quick env model cannot suppress Deep
+  selection. Low/medium/high effort is centralized, passed to CLI and saved in
+  run settings. Status/catalog commands explicitly avoid entitlement claims.
+- Headless's documented request-review init is accepted only alongside required
+  strict real settings, universal deny rules and empty tools; unsafe/unknown
+  permission modes remain rejected.
+- Targeted correction/CLI tests: **320 passed**, whole-repository Ruff and
+  `git diff --check` passed. Previous first-phase Antigravity/routing count: 254.
+- Updated live evidence commands, final focused review and full regression
+  rerun are the next phase.
 - Previous checkpoint results, **not rerun counts for this correction**:
   full fork 1,605 passed / 7 integration deselected / 20 upstream warnings /
   101 subtests; subscription offline 342 passed; clean v0.6.0 baseline

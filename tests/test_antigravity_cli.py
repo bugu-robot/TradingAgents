@@ -160,6 +160,7 @@ def test_conflicting_environment_cannot_reach_child(monkeypatch, variable):
     ("weekly limit exceeded", "quota"), ("resource_exhausted", "quota"),
     ("rate limit 429", "rate_limit"), ("authentication required", "auth"),
     ("not entitled subscription required", "eligibility"), ("administrator policy 403", "permission"),
+    ("invalid model selection unknown model", "configuration"),
     ("503 service unavailable", "transient"), ("unclassified", "cli_failure"),
 ])
 def test_diagnostic_classification_discards_opaque_secrets(diagnostic, kind):
@@ -241,6 +242,36 @@ def test_catalog_preflight_rejects_billed_configuration_before_cli(safe_home, mo
     assert exc.value.kind == 'auth'
 
 
+def test_auth_models_command_runs_catalog_without_inference_or_entitlement_claim(safe_home, monkeypatch):
+    from typer.testing import CliRunner
+
+    from cli.subscription_auth import app
+
+    calls = []
+    monkeypatch.setattr(cli, 'detect_cli', lambda *a: ('/agy', cli.VERIFIED_VERSION))
+    def probe(exe, args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, '\n'.join(f'{slug}\tLabel' for slug in CATALOG), '')
+    monkeypatch.setattr(cli, '_command', probe)
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no inference'))
+    response = CliRunner().invoke(app, ['models', 'antigravity_cli'])
+    assert response.exit_code == 0 and calls == [['models']]
+    assert all(slug in response.stdout for slug in CATALOG)
+    assert 'alone does not prove subscription entitlement' in response.stderr
+
+
+def test_auth_status_does_not_claim_to_verify_google_login_or_plan(safe_home, monkeypatch):
+    from typer.testing import CliRunner
+
+    from cli.subscription_auth import app
+
+    monkeypatch.setattr(cli, 'detect_cli', lambda *a: ('/agy', cli.VERIFIED_VERSION))
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: pytest.fail('no account/model request'))
+    response = CliRunner().invoke(app, ['status', 'antigravity_cli'])
+    assert response.exit_code == 0
+    assert 'does not prove login, plan entitlement or quota' in response.stdout
+
+
 def result(response='訂閱推理完成', **overrides):
     return {'conversation_id': 'conversation-1', 'status': 'SUCCESS', 'response': response,
             'num_turns': 1, 'usage': {'input_tokens': 10, 'output_tokens': 3}, **overrides}
@@ -293,7 +324,7 @@ def test_nested_action_metadata_rejected_even_on_text_step(field):
 
 @pytest.mark.parametrize('field,value', [
     ('tools', ['view_file']), ('tools', ['invoke_subagent']), ('tools', ['mcp/tool']),
-    ('tools', None), ('permission_mode', 'always-proceed'), ('permission_mode', 'request-review'),
+    ('tools', None), ('permission_mode', 'always-proceed'), ('permission_mode', 'unknown'),
     ('cwd', '/user/project'), ('model', 'custom-api-model'), ('agent', 'default'),
 ])
 def test_unsafe_initialization_rejected_before_input(field, value):
@@ -398,6 +429,20 @@ if sys.argv[1:] == ['models']:
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert invocations[:3] == [['--version'], ['--help'], ['models']]
     assert len(invocations) == 4 and invocations[3][invocations[3].index('--model') + 1] == slug
+
+
+def test_documented_request_review_init_with_strict_settings_and_no_tools(safe_home, tmp_path):
+    probes = '''import sys
+if sys.argv[1:] == ['--version']:
+ print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
+if sys.argv[1:] == ['--help']:
+ print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
+if sys.argv[1:] == ['models']:
+ print('gemini-3.1-pro-high Supported model'); sys.exit(0)
+'''
+    executable = fake_executable(tmp_path, probes + native_script(input_first=True, init_overrides={'permission_mode': 'request-review'}))
+    model = cli.AntigravityCLIChatModel(model_name='gemini-3.1-pro-high', executable=executable, max_retries=0, timeout=2)
+    assert model.invoke('Supplied evidence').content == '訂閱推理完成'
 
 
 @pytest.fixture
