@@ -57,6 +57,12 @@ Sanitize the child environment, including newer ADC/gateway/agent overrides.
 Require tool-free agent configuration and reject tools, subagents or side effects
 in stream metadata. Prompts alone are insufficient isolation.
 
+The adapter additionally requires CLI-owned positive personal Pro identification
+and validates a zero-tool, strict, isolated init **before writing stdin**. Public
+docs do not guarantee these two output contracts. If the installed CLI cannot
+supply them, transport is blocked before inference; this is an explicit pending
+compatibility gate, not a claimed verified subscription feature.
+
 ## Structured output and failure boundaries
 
 Deep Pydantic schemas become JSON Schema, passed as an argument without shell

@@ -65,3 +65,22 @@ unknown routing/policy fields and shared customizations before starting any CLI
 process. A minimal OS/keyring child environment avoids both known and future
 gateway/ADC/API switches. Use a dedicated OS account if existing general-purpose
 Antigravity settings conflict; do not automatically mutate or hide them.
+
+## 2026-10-06 — Require positive Pro and pre-input initialization evidence
+
+Official headless docs do not promise a machine-readable Pro identity field or
+when init is emitted relative to stdin input. Require CLI-owned informational
+personal Pro evidence and an exact isolated/pinned/strict/zero-tool init before
+submitting the prompt. Missing evidence blocks inference. These gates are safety
+requirements, not a claim that the actual CLI already satisfies them; live
+validation may identify an official-interface blocker. Never invent an auth
+endpoint, read secure Google tokens or replace this evidence with a user marker.
+
+## 2026-10-06 — Independently validate native schema output
+
+Add jsonschema for local Draft 2020-12 validation before strict Pydantic parsing.
+Pydantic validators in upstream schemas can intentionally coerce strings, so
+Pydantic alone does not prove the CLI respected the generated JSON Schema.
+Require the echoed schema, a complete structured object and matching response
+JSON. Native schema/auth/quota failures are terminal SubscriptionError values;
+upstream managers must not issue another request through free-text fallback.
