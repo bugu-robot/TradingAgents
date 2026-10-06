@@ -56,3 +56,12 @@ The primary documented flow completes OAuth locally and securely transfers this
 tool's protected profile to the VM, preserving its independently generated host
 ID. SSH loopback forwarding can remain an optional convenience, clearly labelled
 as our deployment alternative rather than OpenAI's official method.
+
+## 2026-10-06 — Require a dedicated, reviewed Antigravity environment
+
+The adapter reads the real global settings and requires explicit no-overage,
+strict/sandbox permission policy with all action namespaces denied. It refuses
+unknown routing/policy fields and shared customizations before starting any CLI
+process. A minimal OS/keyring child environment avoids both known and future
+gateway/ADC/API switches. Use a dedicated OS account if existing general-purpose
+Antigravity settings conflict; do not automatically mutate or hide them.

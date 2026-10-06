@@ -5,12 +5,15 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 - Fork: `bugu-robot/TradingAgents`; upstream: `TauricResearch/TradingAgents`.
 - Baseline: TradingAgents **v0.6.0**, `1394a3f72aa4393e1a98f51b382434c4b4c2d972`.
 - Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), unmerged.
-- Latest published checkpoint before this update: `769f8c198612c792fc2b866bab601695906d5881`.
+- Latest published checkpoint before this update: `4e012f0136a534a6a9c23e3486e6ff31fe8aa51d`.
   Resolve the current tip with `git rev-parse origin/feat/subscription-providers`.
 - Phase 0: fetched both remotes, confirmed clean worktree and baseline; no work discarded.
 - Phase 1: official documentation rechecked; official Linux `agy` **1.2.17**
   downloaded, release SHA-512 verified, real `--version`/`--help` inspected.
-- Migration implementation, replacement tests and focused review: in progress.
+- Antigravity foundation: real-settings preflight, API/custom endpoint/policy
+  rejection, OS/keyring environment allowlist, verified CLI detection, strict JSON
+  parsing and safe error classification implemented. 93 new offline foundation
+  cases; transport/schema/routing migration and final focused review pending.
 - Last completed regression before migration: 1,440 passed, 5 integration tests
   deselected, 20 existing warnings; 177 subscription offline tests. These counts
   apply to the old checkpoint, not the pending Antigravity implementation.
