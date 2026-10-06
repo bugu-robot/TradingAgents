@@ -62,6 +62,14 @@ def subscription_model_options(provider: str):
     return provider_module(provider).model_options()
 
 
+def subscription_account_status(provider: str):
+    """Return account/backend status when a provider exposes an official probe."""
+    if subscription_spec(provider) is None:
+        return None
+    status = getattr(provider_module(provider), "account_status", None)
+    return status() if status is not None else None
+
+
 def validate_subscription_tier(provider: str, tier: str) -> None:
     spec = subscription_spec(provider)
     if spec is not None and tier == "quick" and not spec.tool_calls:

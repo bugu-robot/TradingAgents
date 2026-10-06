@@ -8,6 +8,7 @@ from tradingagents.llm_clients.chatgpt_plan_auth import ChatGPTAuthStore, login
 from tradingagents.llm_clients.subscription_errors import USAGE_URL, SubscriptionError
 from tradingagents.llm_clients.subscription_registry import (
     preflight_subscription,
+    subscription_account_status,
     subscription_model_options,
 )
 
@@ -41,18 +42,22 @@ def sign_in(provider: str = typer.Argument("chatgpt_plan"),
 
 @app.command("status")
 def status(provider: str = typer.Argument("chatgpt_plan")):
-    """Read-only local preflight; CLI-owned live authentication is separate."""
+    """Read-only local/provider status; never starts model inference."""
     try:
+        account = subscription_account_status(provider)
+        if account is not None:
+            typer.echo(json.dumps(account))
+            if not account["cached_account_backend_usage_ready"]:
+                raise typer.Exit(1)
+            return
         label = preflight_subscription(provider)
         if label is None:
             raise ValueError("Choose a registered subscription provider.")
         if provider == "chatgpt_plan":
             typer.echo(json.dumps(ChatGPTAuthStore().status()))
-        else:
-            typer.echo(f"{label}: subscription-only configuration and reviewed CLI checks passed. "
-                       "Cached Google sign-in is checked by the CLI during the actual request. "
-                       "This local check does not prove login, plan entitlement or quota; "
-                       "record official interactive /usage evidence after live smokes.")
+        else:  # Future providers without a machine-readable account probe.
+            typer.echo(f"{label}: local configuration and provider preflight passed; "
+                       "account status is not exposed by this provider adapter.")
     except (SubscriptionError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from None

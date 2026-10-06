@@ -181,6 +181,96 @@ def _diagnostic_error(stdout: str, stderr: str, code: int) -> SubscriptionError:
     return SubscriptionError(message, kind=kind, details={"exit_code": code})
 
 
+def _readonly_json(executable: str, command: str, *, timeout: float = 30,
+                   cancellation: threading.Event | None = None) -> dict:
+    """Run a documented read-only slash command and retain no raw payload."""
+    if command != "usage":
+        raise ValueError("Only the documented Antigravity /usage status probe is implemented")
+    result = _command(executable, ["-p", f"/{command}", "--output-format", "json"],
+                      timeout=timeout, cancellation=cancellation)
+    if result.returncode:
+        raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
+    try:
+        payload = _json_object(result.stdout)
+    except ValueError:
+        raise _failure(f"Antigravity /{command} returned malformed structured output; raw output was discarded.",
+                       "malformed_output") from None
+    if not payload:
+        raise _failure(f"Antigravity /{command} returned an empty structured response.", "malformed_output")
+
+    # The documented headless result envelope provides status and num_turns.
+    # Do not interpret response text as account/plan data or guess quota fields.
+    status = payload.get("status")
+    error = payload.get("error")
+    if status != "SUCCESS":
+        raise _diagnostic_error(json.dumps(payload, ensure_ascii=False), "", 0)
+    if error not in (None, "", {}, []):
+        raise _diagnostic_error(json.dumps(error, ensure_ascii=False), "", 0)
+    if type(payload.get("num_turns")) is not int or payload["num_turns"] != 0:
+        raise _failure(f"Antigravity /{command} did not return a zero-turn read-only result; raw output was discarded.",
+                       "malformed_output")
+    if not isinstance(payload.get("response"), str):
+        raise _failure(f"Antigravity /{command} did not return the documented response field; raw output was discarded.",
+                       "malformed_output")
+    return payload
+
+
+def account_status(executable: str | None = None) -> dict:
+    """Separate local safe configuration from official cached-account usage readiness.
+
+    `/usage` is a documented print-mode read-only command. Its payload schema
+    does not document stable plan-tier/quota fields, so only command success is
+    reported; no account identifiers, raw payload or inferred plan are emitted.
+    """
+    try:
+        _configuration_preflight()
+    except SubscriptionError as exc:
+        return {
+            "provider": "antigravity_cli", "cli_version": None,
+            "local_configuration_ready": False,
+            "cached_account_backend_usage_ready": False,
+            "usage_check": "not_attempted", "failure_kind": exc.kind,
+            "model_turns_consumed": None,
+            "plan_entitlement": "not_verified", "quota_details": "not_reported",
+        }
+    try:
+        resolved, version = detect_cli(executable)
+    except SubscriptionError as exc:
+        return {
+            "provider": "antigravity_cli", "cli_version": None,
+            "local_configuration_ready": True,
+            "cached_account_backend_usage_ready": False,
+            "usage_check": "not_attempted", "failure_kind": exc.kind,
+            "model_turns_consumed": None,
+            "plan_entitlement": "not_verified", "quota_details": "not_reported",
+        }
+    try:
+        usage = _readonly_json(resolved, "usage")
+    except SubscriptionError as exc:
+        return {
+            "provider": "antigravity_cli",
+            "cli_version": version,
+            "local_configuration_ready": True,
+            "cached_account_backend_usage_ready": False,
+            "usage_check": "failed",
+            "failure_kind": exc.kind,
+            "model_turns_consumed": None,
+            "plan_entitlement": "not_verified",
+            "quota_details": "not_reported",
+        }
+    return {
+        "provider": "antigravity_cli",
+        "cli_version": version,
+        "local_configuration_ready": True,
+        "cached_account_backend_usage_ready": True,
+        "usage_check": "successful_noninference_zero_turn_response",
+        "failure_kind": None,
+        "model_turns_consumed": usage["num_turns"],
+        "plan_entitlement": "not_verified",
+        "quota_details": "not_interpreted; use official /usage evidence",
+    }
+
+
 def _command(executable: str, args: list[str], *, timeout: float = 15,
              cancellation: threading.Event | None = None) -> subprocess.CompletedProcess:
     """Bound informational probes too, including any language-server children."""
@@ -262,20 +352,34 @@ def _catalog_models(executable: str, cancellation: threading.Event | None = None
     # Recheck actual settings before the catalog child too. No cached catalog:
     # availability changes and the exact slug must still be present at invocation.
     _configuration_preflight()
-    result = _command(executable, ["models"], timeout=30, cancellation=cancellation)
+    result = _command(executable, ["models", "--output-format", "json"], timeout=30,
+                      cancellation=cancellation)
     if result.returncode:
+        if "flags provided but not defined" in (result.stdout + result.stderr).lower() and "output-format" in (result.stdout + result.stderr).lower():
+            raise _failure("This Antigravity CLI build does not implement the documented JSON model-list flag. "
+                           "Upgrade to a build whose `agy models --help` exposes --output-format; "
+                           "human-readable parsing is disabled.", "unsupported_cli") from None
         raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
-    models = []
-    for line in result.stdout.splitlines():
-        if not line.strip():
-            continue
-        # The documented public command prints a slug followed by its label.
-        # Labels are untrusted diagnostics: neither display nor persist them.
-        match = re.fullmatch(r"\s*(\S+)\s+[^\x00-\x1f\x7f]+\s*", line)
-        if not match or not _valid_model(match[1]) or match[1] in models or len(models) >= 1024:
-            raise _failure("Antigravity returned an unrecognized model catalog. Check the official agy models output; "
-                           "no model request or fallback was attempted.", "malformed_output")
-        models.append(match[1])
+    try:
+        envelope = _json_object(result.stdout)
+        models_data = envelope["command"]["data"]["models"]
+        if not isinstance(models_data, list) or not models_data or len(models_data) > 1024:
+            raise ValueError("Invalid model array")
+        models, seen = [], set()
+        for item in models_data:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                raise ValueError("Invalid model entry")
+            slug = item["id"]
+            label = item.get("label")
+            if (not _valid_model(slug) or slug in seen or
+                    (label is not None and (not isinstance(label, str) or len(label) > 160
+                                            or any(ord(ch) < 32 or ord(ch) == 127 for ch in label)))):
+                raise ValueError("Invalid or duplicate model metadata")
+            seen.add(slug)
+            models.append(slug)
+    except (KeyError, TypeError, ValueError):
+        raise _failure("Antigravity returned malformed JSON model-catalog data; the documented JSON path "
+                       "is required and there is no text fallback.", "malformed_output") from None
     if not models:
         raise _failure("Antigravity returned an empty model catalog. Sign in interactively and check agy models; "
                        "catalog presence alone does not prove plan entitlement.", "malformed_output")
@@ -641,14 +745,45 @@ class AntigravityCLIChatModel(BaseChatModel):
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
         cancellation = kwargs.pop("cancellation_event", None) or threading.Event()
-        task = asyncio.create_task(asyncio.to_thread(self._generate, messages, stop, None,
-                                                    cancellation_event=cancellation, **kwargs))
+        loop = asyncio.get_running_loop()
+        result = loop.create_future()
+
+        def consume_result(completed):
+            if not completed.cancelled():
+                with suppress(BaseException):
+                    completed.exception()
+
+        result.add_done_callback(consume_result)
+
+        def generate_in_thread():
+            try:
+                generated = self._generate(messages, stop, None,
+                                           cancellation_event=cancellation, **kwargs)
+                error = None
+            except BaseException as exc:
+                generated, error = None, exc
+
+            def deliver_result():
+                if cancellation.is_set() or result.done():
+                    return
+                if error is not None:
+                    result.set_exception(error)
+                else:
+                    result.set_result(generated)
+
+            loop.call_soon_threadsafe(deliver_result)
+
+        worker = threading.Thread(target=generate_in_thread,
+                                  name="antigravity-cli-worker", daemon=True)
+        worker.start()
         try:
-            return await asyncio.shield(task)
+            return await asyncio.shield(result)
         except asyncio.CancelledError:
             cancellation.set()
-            with suppress(SubscriptionError):
-                await asyncio.shield(task)
+            # Join directly so cancellation cannot return before _generate has
+            # reaped its CLI process group. A dedicated worker avoids leaking
+            # an asyncio default-executor job through loop shutdown.
+            worker.join()
             raise
 
 

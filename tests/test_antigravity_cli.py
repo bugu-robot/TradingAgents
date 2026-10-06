@@ -187,6 +187,13 @@ def test_configured_reviewed_cli_never_sends_speculative_account_prompt(safe_hom
 CATALOG = ('gemini-3.1-pro-high', 'claude-sonnet-4-6-thinking', 'gpt-oss-120b')
 
 
+def catalog_json(slugs=CATALOG):
+    # CLI JSON command envelope: command.data.models is a list of id/label rows.
+    return json.dumps({"command": {"data": {"models": [
+        {"id": slug, "label": f"Official label for {slug}"} for slug in slugs
+    ]}}})
+
+
 def test_catalog_discovery_uses_only_official_non_inference_command(safe_home, monkeypatch):
     calls = []
     monkeypatch.setattr(cli.shutil, 'which', lambda _: '/agy')
@@ -195,23 +202,47 @@ def test_catalog_discovery_uses_only_official_non_inference_command(safe_home, m
     def probe(exe, args, **kwargs):
         calls.append(args)
         output = {('--version',): cli.VERIFIED_VERSION, ('--help',): '\n'.join(cli.REQUIRED_FLAGS),
-                  ('models',): '\n'.join(f'{slug}\tSupported model' for slug in CATALOG)}[tuple(args)]
+                  ('models', '--output-format', 'json'): catalog_json()}[tuple(args)]
         return subprocess.CompletedProcess(args, 0, output, '')
     monkeypatch.setattr(cli, '_command', probe)
     options = cli.model_options()
     assert [slug for _, slug in options] == list(CATALOG)
-    assert calls == [['--version'], ['--help'], ['models']]
+    assert calls == [['--version'], ['--help'], ['models', '--output-format', 'json']]
     assert all('verify plan access' in label for label, _ in options)
 
 
-@pytest.mark.parametrize('stdout', ['', '   \n', 'model-without-label', '../custom Label',
-                                  '--model Label', 'gemini-pro Label\ngemini-pro Duplicate',
-                                  'gemini-pro Label\ninvalid/id Label', 'gemini-pro \x1b[31mLabel'])
+@pytest.mark.parametrize('stdout', ['', '   \n', 'model-without-label', '[]', 'null',
+                                  '{"command":{"data":{"models":[]}}}',
+                                  '{"command":{"data":{"models":[{"id":"../custom","label":"x"}]}}}',
+                                  '{"command":{"data":{"models":[{"id":"gemini-pro","label":"x"},{"id":"gemini-pro","label":"duplicate"}]}}}',
+                                  '{"command":{"data":{"models":[{"id":"claude-sonnet-4-6","label":"\u001b[31munsafe"}]}}}',
+                                  '{"command":{"data":{"models":[{"id":"gemini-pro","label":"x","id":"claude-sonnet-4-6"}]}}}'])
 def test_unreadable_or_unsafe_catalog_is_terminal(safe_home, monkeypatch, stdout):
     monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], 0, stdout, ''))
     with pytest.raises(SubscriptionError) as exc:
         cli._catalog_models('/agy')
     assert exc.value.kind == 'malformed_output'
+
+
+def test_catalog_never_falls_back_to_human_text(safe_home, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, '_command', lambda exe, args, **kwargs: (
+        calls.append(args) or subprocess.CompletedProcess(args, 0,
+            'gemini-3.1-pro-high  Gemini 3.1 Pro High', '')))
+    with pytest.raises(SubscriptionError, match='malformed JSON model-catalog'):
+        cli._catalog_models('/agy')
+    assert calls == [['models', '--output-format', 'json']]
+
+
+def test_cli_build_without_documented_catalog_flag_fails_without_text_fallback(safe_home, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli, '_command', lambda exe, args, **kwargs: (
+        calls.append(args) or subprocess.CompletedProcess(args, 1, '',
+            'Error: flags provided but not defined: -output-format')))
+    with pytest.raises(SubscriptionError, match='does not implement the documented JSON model-list flag') as exc:
+        cli._catalog_models('/agy')
+    assert exc.value.kind == 'unsupported_cli'
+    assert calls == [['models', '--output-format', 'json']]
 
 
 @pytest.mark.parametrize('slug', CATALOG + ('future-family-v2.1', 'other_model-3'))
@@ -251,25 +282,76 @@ def test_auth_models_command_runs_catalog_without_inference_or_entitlement_claim
     monkeypatch.setattr(cli, 'detect_cli', lambda *a: ('/agy', cli.VERIFIED_VERSION))
     def probe(exe, args, **kwargs):
         calls.append(args)
-        return subprocess.CompletedProcess(args, 0, '\n'.join(f'{slug}\tLabel' for slug in CATALOG), '')
+        return subprocess.CompletedProcess(args, 0, catalog_json(), '')
     monkeypatch.setattr(cli, '_command', probe)
     monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no inference'))
     response = CliRunner().invoke(app, ['models', 'antigravity_cli'])
-    assert response.exit_code == 0 and calls == [['models']]
+    assert response.exit_code == 0 and calls == [['models', '--output-format', 'json']]
     assert all(slug in response.stdout for slug in CATALOG)
     assert 'alone does not prove subscription entitlement' in response.stderr
 
 
-def test_auth_status_does_not_claim_to_verify_google_login_or_plan(safe_home, monkeypatch):
+def test_auth_status_uses_official_non_inference_usage_and_never_model_transport(safe_home, monkeypatch):
+    from typer.testing import CliRunner
+
+    from cli.subscription_auth import app
+
+    detected = []
+    monkeypatch.setattr(cli, 'detect_cli', lambda *a: (detected.append(a) or ('/agy', cli.VERIFIED_VERSION)))
+    calls = []
+    monkeypatch.setattr(cli, '_command', lambda exe, args, **kwargs: (
+        calls.append(args) or subprocess.CompletedProcess(args, 0,
+            json.dumps({'status': 'SUCCESS', 'num_turns': 0,
+                        'response': 'Models quota: private account details'}), '')))
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('auth status must not infer'))
+    monkeypatch.setattr(cli, '_catalog_models', lambda *a, **k: pytest.fail('auth status must not list models'))
+    response = CliRunner().invoke(app, ['status', 'antigravity_cli'])
+    assert response.exit_code == 0
+    status = json.loads(response.stdout)
+    assert status['local_configuration_ready'] is True
+    assert status['cached_account_backend_usage_ready'] is True
+    assert status['model_turns_consumed'] == 0
+    assert status['plan_entitlement'] == 'not_verified'
+    assert detected == [(None,)]
+    assert calls == [['-p', '/usage', '--output-format', 'json']]
+    assert 'private account details' not in response.stdout
+
+
+@pytest.mark.parametrize(('stdout', 'stderr', 'code', 'kind'), [
+    ('', 'authentication required opaque-secret', 1, 'auth'),
+    ('{"status":"ERROR","error":"quota exhausted opaque-secret"}', '', 0, 'quota'),
+    ('{"status":"ERROR","error":"rate limit opaque-secret"}', '', 0, 'rate_limit'),
+    ('{"status":"SUCCESS","num_turns":1}', '', 0, 'malformed_output'),
+    ('{"status":"SUCCESS"}', '', 0, 'malformed_output'),
+    ('{"status":"SUCCESS","num_turns":0}', '', 0, 'malformed_output'),
+    ('not-json opaque-secret', '', 0, 'malformed_output'),
+    ('{"status":"SUCCESS","status":"ERROR"}', '', 0, 'malformed_output'),
+])
+def test_auth_status_safely_classifies_usage_failures(safe_home, monkeypatch, stdout, stderr, code, kind):
     from typer.testing import CliRunner
 
     from cli.subscription_auth import app
 
     monkeypatch.setattr(cli, 'detect_cli', lambda *a: ('/agy', cli.VERIFIED_VERSION))
-    monkeypatch.setattr(cli, '_command', lambda *a, **k: pytest.fail('no account/model request'))
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], code, stdout, stderr))
+    monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('auth status must not infer'))
     response = CliRunner().invoke(app, ['status', 'antigravity_cli'])
-    assert response.exit_code == 0
-    assert 'does not prove login, plan entitlement or quota' in response.stdout
+    assert response.exit_code == 1
+    report = json.loads(response.stdout)
+    assert report['local_configuration_ready'] is True
+    assert report['cached_account_backend_usage_ready'] is False
+    assert report['failure_kind'] == kind
+    assert 'opaque-secret' not in response.stdout + response.stderr
+
+
+def test_auth_status_fails_before_usage_if_subscription_settings_are_unsafe(safe_home, monkeypatch):
+    write_settings(safe_home, modelProvider='gemini')
+    monkeypatch.setattr(cli, 'detect_cli', lambda *a: pytest.fail('config gate first'))
+    monkeypatch.setattr(cli, '_command', lambda *a, **k: pytest.fail('no usage request'))
+    status = cli.account_status()
+    assert status['local_configuration_ready'] is False
+    assert status['cached_account_backend_usage_ready'] is False
+    assert status['usage_check'] == 'not_attempted'
 
 
 def result(response='訂閱推理完成', **overrides):
@@ -420,14 +502,14 @@ if sys.argv[1:] == ['--version']:
  print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
 if sys.argv[1:] == ['--help']:
  print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
-if sys.argv[1:] == ['models']:
- print(''' + repr('\n'.join(f'{s}\tSupported model' for s in CATALOG)) + '''); sys.exit(0)
+if sys.argv[1:] == ['models', '--output-format', 'json']:
+ print(''' + repr(catalog_json()) + '''); sys.exit(0)
 '''
     executable = fake_executable(tmp_path, probes + native_script(input_first=True))
     model = cli.AntigravityCLIChatModel(model_name=slug, executable=executable, max_retries=0, timeout=2)
     assert model.invoke('Supplied evidence').response_metadata['model_name'] == slug
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
-    assert invocations[:3] == [['--version'], ['--help'], ['models']]
+    assert invocations[:3] == [['--version'], ['--help'], ['models', '--output-format', 'json']]
     assert len(invocations) == 4 and invocations[3][invocations[3].index('--model') + 1] == slug
 
 
@@ -437,8 +519,8 @@ if sys.argv[1:] == ['--version']:
  print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
 if sys.argv[1:] == ['--help']:
  print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
-if sys.argv[1:] == ['models']:
- print('gemini-3.1-pro-high Supported model'); sys.exit(0)
+if sys.argv[1:] == ['models', '--output-format', 'json']:
+ print(''' + repr(catalog_json(('gemini-3.1-pro-high',))) + '''); sys.exit(0)
 '''
     executable = fake_executable(tmp_path, probes + native_script(input_first=True, init_overrides={'permission_mode': 'request-review'}))
     model = cli.AntigravityCLIChatModel(model_name='gemini-3.1-pro-high', executable=executable, max_retries=0, timeout=2)
