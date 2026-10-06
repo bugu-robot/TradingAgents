@@ -27,7 +27,7 @@ SUBSCRIPTION_PROVIDERS: dict[str, SubscriptionProvider] = {
         knob_provider="openai",
     ),
     "antigravity_cli": SubscriptionProvider(
-        label="Antigravity CLI (Google AI Pro; deep only; live pending)",
+        label="Antigravity CLI (Google AI Pro; deep only; activation blocked)",
         module="antigravity_cli_client", client_class="AntigravityCLIClient",
         tool_calls=False, structured_output="native_json_schema",
         unsupported_parameters=frozenset({"temperature", "max_tokens", "max_output_tokens"}),

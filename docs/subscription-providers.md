@@ -67,12 +67,12 @@ tradingagents auth status antigravity_cli
 tradingagents auth models antigravity_cli
 ```
 
-These commands check the real global configuration, reviewed executable and
-CLI-owned Pro account report. They cannot independently establish inference,
-quota accounting or billing. Current public docs do not guarantee the exact Pro
-report field or init-before-input ordering required by the adapter. Missing
-evidence blocks inference. This is a known official-interface compatibility gate,
-not a mock-verified entitlement claim.
+These commands check the real global configuration and reviewed executable, then
+return the current official-interface blocker. Version 1.2.17 has no documented
+non-inference headless personal Pro preflight; `/help` is a TUI panel. The adapter
+**always blocks inference** until a supported official preflight is implemented
+and reviewed. Login alone cannot fix this. Init-before-input ordering is also
+unverified. A model-authored identity report or local attestation is never used.
 
 Subscription-only operation requires explicit `useG1Credits=false`, strict
 permissions, sandbox enabled, non-workspace access disabled and all action

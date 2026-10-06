@@ -93,3 +93,16 @@ Use strict shared JSON, no-fetch schema validation and terminal safe errors for
 both transports. Informational probes need the same bounds/group cleanup as
 model processes. Protect app storage and locks without modifying unrelated paths;
 these are security corrections, not a change to the official OAuth protocol.
+
+## 2026-10-06 — Withdraw speculative headless Pro-report admission
+
+Final official-reference review supersedes the earlier proposed informational
+Pro-report gate: `/help` is documented as a TUI panel, not a non-inference
+headless account/plan report. Interactive status-line `plan_tier` does not prove
+a headless account check exists. Do not send `/help` as a prompt, trust
+model-generated identity, read Google tokens, accept manual/local attestations
+or add a force/bypass setting. Authentication preflight now always blocks the
+reviewed 1.2.17 adapter before inference. The prepared reasoning/schema transport
+remains offline tested; Google activation needs a supported official preflight
+and another code review, then the single live session. User login cannot fix
+this interface blocker. This is an explicit limitation, not a working feature.

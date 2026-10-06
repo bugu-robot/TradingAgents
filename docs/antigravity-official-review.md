@@ -38,6 +38,19 @@ Static inspection also identifies ADC and LLM gateway environment overrides;
 they will be excluded conservatively. This is configuration inspection, not an
 alternative transport or permission to invoke private endpoints.
 
+## Activation blocker found in final review
+
+[CLI reference](https://www.antigravity.google/docs/cli/reference/) documents
+`/help` as a TUI commands/shortcuts panel, not a supported non-inference headless
+account/plan report. [Status-line metadata](https://www.antigravity.google/docs/cli/statusline/)
+includes interactive `plan_tier`, but does not establish a headless auth-check
+interface. Headless init docs do not promise positive Pro identity or output
+before the first stdin prompt. Do not turn a model-generated report into auth
+evidence. The adapter therefore blocks at authentication, without submitting
+`/help` or any model prompt. Google activation requires an official account
+preflight followed by implementation/review, then real init/live verification.
+Login alone is insufficient; no bypass/local attestation is provided.
+
 ## OpenAI recheck
 
 - [Official self-hosted VMs](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms):

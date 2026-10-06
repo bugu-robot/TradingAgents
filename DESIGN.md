@@ -57,11 +57,14 @@ Sanitize the child environment, including newer ADC/gateway/agent overrides.
 Require tool-free agent configuration and reject tools, subagents or side effects
 in stream metadata. Prompts alone are insufficient isolation.
 
-The adapter additionally requires CLI-owned positive personal Pro identification
-and validates a zero-tool, strict, isolated init **before writing stdin**. Public
-docs do not guarantee these two output contracts. If the installed CLI cannot
-supply them, transport is blocked before inference; this is an explicit pending
-compatibility gate, not a claimed verified subscription feature.
+Activation requires supported non-inference CLI-owned personal Pro evidence and
+a zero-tool, strict, isolated init **before writing stdin**. Final reference
+review found that 1.2.17 documents `/help` as a TUI panel, not a headless plan
+preflight. Authentication admission is therefore unconditionally blocked before
+inference. No speculative slash prompt, local attestation or bypass flag exists.
+The schema/transport is prepared and tested offline, not usable as a live Pro
+provider. Implement/review a future official account preflight first; init
+ordering is a second live compatibility gate.
 
 ## Structured output and failure boundaries
 

@@ -27,8 +27,15 @@ construction tests. They do not invoke AWS. Normal regression excludes integrati
 tests; the explicit integration command must report skipped live checks unless
 `RUN_SUBSCRIPTION_LIVE=1` is intentionally set. Never add skips to passed counts.
 
-Before migration: 1,440 passed, 5 integration deselected, 20 existing warnings;
-177 subscription offline tests. New migration totals are pending.
+Final migration evidence (2026-10-06, Python 3.12.14): clean baseline 1,263
+passed/1 integration deselected; fork 1,605 passed/7 integration deselected;
+342 subscription offline cases. Both full suites have the same 20 upstream
+warnings. Six subscription live cases explicitly skipped, zero executed.
+Ruff, diff-check, compile/package/CLI import and fresh runtime installation pass.
+
+Antigravity activation is blocked by the lack of a reviewed official non-inference
+headless Pro account preflight. Login cannot unlock the current adapter. No live
+session should start until that supported interface is implemented and reviewed.
 
 ## Live acceptance checklist — all pending
 

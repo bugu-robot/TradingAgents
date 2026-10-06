@@ -305,12 +305,14 @@ Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
 `deep_think_provider="antigravity_cli"`, or ChatGPT Plan for both tiers. The
 adapter rejects API/provider/custom-endpoint modes, unsafe global customization,
 credit overage and unreviewed policy before inference. It sanitizes the child
-environment and requires positive CLI personal Pro account information and a
-strict zero-tool initialization before sending the prompt.
+environment, scoped zero-tool initialization and a supported personal Pro
+account preflight before sending a prompt.
 
-**Live acceptance is pending.** Official headless docs do not guarantee those
-account/init output contracts; if the actual CLI cannot provide them, inference
-is blocked. Offline mocks do not establish Plus/Pro entitlement or billing.
+**Antigravity activation is blocked.** The reviewed official CLI 1.2.17 docs do
+not expose a supported non-inference headless Pro account preflight. The adapter
+therefore always refuses inference; signing in alone does not unlock it. A future
+official preflight needs implementation/review before live acceptance. Init
+ordering also remains unverified. Offline mocks do not establish entitlement or billing.
 The former Gemini CLI subscription provider has been removed; the ordinary
 `google` Gemini API provider remains unchanged.
 

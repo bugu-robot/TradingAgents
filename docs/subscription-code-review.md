@@ -82,8 +82,9 @@ are retained; changes address demonstrated storage/protocol/schema issues.
 | A5 | P2 | ChatGPT malformed/coercible structured values could be accepted by Pydantic or escape as ValueError, causing an extra plain request. | Strict JSON, independent JSON Schema validation with a no-fetch registry, strict Pydantic JSON validation and terminal redacted SubscriptionError. Five malformed/schema cases prove exactly one request and no free-text fallback. Explicit include_raw retains safe parsing_error behavior. |
 | A6 | P2 | Nonzero CLI exits before init lost auth classification; cancellation after output pipes closed could wait until the long request deadline. | Classify nonzero exit diagnostics safely; poll cancellation/deadline while waiting for exit. Regressions confirm auth classification without raw-secret leakage and child reaping after closed pipes. |
 | A7 | P2 | Action metadata recognition missed camelCase/plugin/skill spellings and confused structured property names with execution metadata. | Normalize reviewed metadata keys and reject all action namespaces; schema/structured-value payloads remain data. Tests cover MCP/plugins/subagents/commands and harmless structured fields named commands/tool_calls. |
+| A8 | P1 | Proposed `--print /help` authentication probe assumes a headless account report not promised by official docs; it could be a model prompt rather than trusted identity evidence. | Remove the speculative probe and all Pro-report parsing. Authentication always fails before inference until a supported official non-inference preflight is implemented/reviewed. A configured/version-verified CLI regression proves only --version/--help run; no prompt/Google token inspection or bypass exists. |
 
-All A1–A7 are corrected before live verification. No unresolved P1/P2 code finding
+All A1–A8 are corrected before live verification. No unresolved P1/P2 code finding
 is accepted. OAuth state, nonce, S256 PKCE, signature/issuer/audience/expiry and
 returning-subject validation, exact redirect handling, atomic refresh rotation,
 credential redaction, cross-turn tool IDs and terminal UTF-8 SSE handling were
@@ -96,14 +97,15 @@ contamination, shared customization/policy, private workspace permissions,
 file/command/URL denial, MCP/plugins/skills/subagents, strict init, action
 metadata, JSON Schema, terminal failure, bounded retries and process cleanup.
 No global settings or administrator policy are automatically overwritten or
-hidden. Current test evidence: **346 subscription offline cases passed**; final
-whole-repository regression is pending at this checkpoint. Six live cases skip
+hidden. Final test evidence: **342 subscription offline cases passed**;
+**1,605 whole-fork tests passed; 1,263 clean-baseline tests passed**, with the
+same 20 upstream warnings and no failures. Six live cases skip
 by default. Skips are not passes.
 
 Two **acceptance/official-interface blockers**, separate from corrected code
-findings, remain: official headless docs do not promise the Pro identity field
-or init-before-input ordering required for safe admission. The adapter fails
-before inference if these cannot be established. Prompt instructions and mock
+findings, remain: there is no reviewed official non-inference headless Pro
+preflight, and init-before-input ordering is unverified. Authentication admission
+now unconditionally fails before inference; login cannot unlock it. Prompt instructions and mock
 metadata are not proof of sandboxing, entitlement or billing. Actual CLI startup
 still owns its internal configuration/keyring/log files; the zero-tool boundary
 constrains model actions. A future CLI version requires another review. No live

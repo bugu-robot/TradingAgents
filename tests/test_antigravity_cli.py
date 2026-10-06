@@ -168,23 +168,22 @@ def test_diagnostic_classification_discards_opaque_secrets(diagnostic, kind):
     assert 'opaqueSecret' not in str(error) and 'raw-secret' not in str(error.details)
 
 
-@pytest.mark.parametrize("report,kind", [
-    ('', 'auth'), ('Account: somebody\nPlan: Free', 'eligibility'),
-    ('Account: somebody\nPlan: Pro\nCredential: Gemini API key', 'auth'),
-    ('Plan: Pro\nCredential: ADC', 'auth'), ('Plan: Pro\nLicense: Enterprise', 'auth'),
-    ('{"status":"ERROR","error":"authentication required"}', 'auth'),
-    ('unrecognized informational output opaqueSecret', 'eligibility'),
-])
-def test_auth_preflight_requires_positive_cli_pro_evidence(monkeypatch, report, kind):
-    monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], 0, report, ''))
+def test_configured_reviewed_cli_never_sends_speculative_account_prompt(safe_home, monkeypatch):
+    calls = []
+    monkeypatch.setattr(cli.shutil, 'which', lambda _: '/agy')
+    def probe(exe, args, **kwargs):
+        calls.append(args)
+        if args == ['--version']:
+            return subprocess.CompletedProcess([], 0, cli.VERIFIED_VERSION, '')
+        if args == ['--help']:
+            return subprocess.CompletedProcess([], 0, '\n'.join(cli.REQUIRED_FLAGS), '')
+        pytest.fail('no speculative CLI/model account probe')
+    monkeypatch.setattr(cli, '_command', probe)
     with pytest.raises(SubscriptionError) as exc:
-        cli._authentication_preflight('/agy')
-    assert exc.value.kind == kind and 'opaqueSecret' not in str(exc.value)
-
-
-def test_mocked_cli_pro_information_passes_preflight_but_is_not_live_proof(monkeypatch):
-    monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], 0, 'Account: test@example.invalid\nPlan: Google AI Pro', ''))
-    cli._authentication_preflight('/agy')
+        cli.preflight('/agy')
+    assert exc.value.kind == 'eligibility' and 'opaqueSecret' not in str(exc.value)
+    assert 'Login alone cannot unlock' in str(exc.value)
+    assert calls == [['--version'], ['--help']]
 
 
 def result(response='訂閱推理完成', **overrides):

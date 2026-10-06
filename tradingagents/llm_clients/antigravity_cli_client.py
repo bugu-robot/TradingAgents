@@ -245,34 +245,18 @@ def preflight(executable: str | None = None, cancellation: threading.Event | Non
 
 
 def _authentication_preflight(executable: str, cancellation: threading.Event | None = None) -> None:
-    """Require positive CLI-owned personal Pro identification before inference.
+    """No speculative /help prompt or token inspection to establish Pro.
 
-    Official docs expose credential identity in /help, but do not promise a
-    headless machine-readable plan field. If the pinned CLI cannot report one,
-    this adapter remains blocked rather than trust a user-written attestation
-    or read Google token storage. Live verification must resolve this boundary.
+    Reviewed official 1.2.17 docs expose a TUI help panel and interactive status
+    metadata, not a supported non-inference headless subscription/account check.
+    A model-authored report or local attestation is not authentication evidence.
+    Keep the transport disabled until an official preflight can be implemented.
     """
-    result = _command(executable, ["--print", "/help", "--output-format", "json", "--print-timeout", "15s"], timeout=20,
-                      cancellation=cancellation)
-    if result.returncode:
-        raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
-    report = result.stdout
-    try:
-        body = _json_object(report)
-        if body.get("error") or body.get("status") not in {None, "SUCCESS"}:
-            raise _diagnostic_error(report, result.stderr, 1)
-        report = body.get("response", "")
-    except ValueError:
-        pass  # Informational slash commands may return plain text, per docs.
-    if not isinstance(report, str) or not report.strip():
-        raise _failure("Antigravity did not report an authenticated personal Google AI Pro session. "
-                       "Use official interactive sign-in; a model request was not sent.", "auth")
-    if re.search(r"(?i)api[ -]?key|vertex|\badc\b|application default|service.account|enterprise|pay.?go|billing.project|custom.endpoint", report):
-        raise _failure("Antigravity reports API/Cloud/enterprise authentication rather than a personal Google AI Pro session. "
-                       "Subscription-only inference is blocked.", "auth")
-    if not re.search(r"(?im)^\s*(?:plan(?:\s+tier)?|subscription(?:\s+tier)?)\s*:\s*(?:google\s+ai\s+)?pro\s*$", report):
-        raise _failure("The installed CLI did not positively identify Google AI Pro in its informational account report. "
-                       "Subscription-only safety cannot be established; inference is blocked. See STATUS.md.", "eligibility")
+    if cancellation is not None and cancellation.is_set():
+        raise _failure("Antigravity preflight cancelled.", "cancelled")
+    raise _failure("Antigravity inference is disabled: the reviewed official CLI 1.2.17 interface "
+                   "does not provide a supported non-inference Google AI Pro account preflight. "
+                   "Login alone cannot unlock this adapter. See STATUS.md; no model request was sent.", "eligibility")
 
 
 def model_options():

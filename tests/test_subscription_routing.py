@@ -8,10 +8,12 @@ import typer
 from cli import selections
 from cli.prompts import _llm_provider_table, ensure_api_key
 from tradingagents import default_config
+from tradingagents.agents.managers.portfolio_manager import create_portfolio_manager
 from tradingagents.agents.managers.research_manager import create_research_manager
 from tradingagents.llm_clients import antigravity_cli_client, factory
 from tradingagents.llm_clients.antigravity_cli_client import AntigravityCLIChatModel
 from tradingagents.llm_clients.chatgpt_plan_client import ChatGPTPlanChatModel
+from tradingagents.llm_clients.subscription_errors import SubscriptionError
 from tradingagents.llm_clients.subscription_registry import SUBSCRIPTION_PROVIDERS
 
 
@@ -103,6 +105,40 @@ def test_deep_research_manager_uses_native_schema(monkeypatch):
                    "investment_debate_state": {"history": "bull and bear evidence", "count": 2}})
     assert result["investment_plan"].startswith("**Recommendation**: Hold")
     assert len(calls) == 1 and calls[0]["title"] == "ResearchPlan"
+
+
+@pytest.mark.parametrize("failure", [None, "quota", "malformed_output"])
+def test_deep_portfolio_manager_native_schema_and_terminal_failure(monkeypatch, failure):
+    model = factory.create_tier_client(config(), "deep").get_llm()
+    monkeypatch.setattr(antigravity_cli_client, "preflight", lambda *a: ("/agy", "1.2.17"))
+    monkeypatch.setattr(antigravity_cli_client, "_configuration_preflight", lambda: None)
+    calls = []
+    def run(command, prompt, **kwargs):
+        schema = json.loads(command[command.index("--json-schema") + 1])
+        calls.append(schema)
+        if failure:
+            raise SubscriptionError("Safe terminal test failure", kind=failure)
+        data = {"rating": "Hold", "executive_summary": "Maintain exposure.",
+                "investment_thesis": "Balanced supplied evidence.", "price_target": None,
+                "time_horizon": "3 months"}
+        return antigravity_cli_client._parse_result({
+            "conversation_id": "portfolio", "status": "SUCCESS", "response": json.dumps(data),
+            "num_turns": 1, "structured_output": data, "json_schema": schema, "usage": {}}, schema)
+    monkeypatch.setattr(antigravity_cli_client, "_run_process", run)
+    state = {"company_of_interest": "AAPL", "trade_date": "2026-10-02", "investment_plan": "Hold",
+             "trader_investment_plan": "Hold", "risk_debate_state": {
+                 "history": "risk evidence", "count": 3, **dict.fromkeys((
+                     "aggressive_history", "conservative_history", "neutral_history",
+                     "current_aggressive_response", "current_conservative_response", "current_neutral_response"), "")}}
+    node = create_portfolio_manager(model)
+    if failure:
+        with pytest.raises(SubscriptionError) as exc:
+            node(state)
+        assert exc.value.kind == failure
+    else:
+        result = node(state)
+        assert result["final_rating"] == "Hold" and "Balanced supplied evidence" in result["final_trade_decision"]
+    assert len(calls) == 1 and calls[0]["title"] == "PortfolioDecision"
 
 
 def test_subscription_config_overlay_and_run_settings_preserve_tier_names(monkeypatch):
