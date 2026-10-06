@@ -37,6 +37,10 @@ archive without shell-profile mutation rather than assume installer flags.
 Static inspection also identifies ADC and LLM gateway environment overrides;
 they will be excluded conservatively. This is configuration inspection, not an
 alternative transport or permission to invoke private endpoints.
+Agent inheritance/exclusion fields recognized by static binary inspection are
+not claimed runtime verified. Scoped agent files in offline tests use those
+fields, but any future activation must verify their effective exclusion through
+strict zero-tool init before supplying a prompt; the current auth gate blocks.
 
 ## Activation blocker found in final review
 

@@ -309,8 +309,9 @@ def _agent_file(root: Path, system: str) -> str:
         "name": name, "description": "TradingAgents supplied-evidence reasoning only",
         "mainAgent": True, "subagent": False, "commandExecutionPolicy": "off",
         "tools": [], "skills": [], "plugins": [], "mcpServers": [], "inheritMcp": False,
-        # Verified 1.2.17 Markdown configuration fields. Empty lists must not
-        # inherit the ambient/built-in agent customizations added in CLI 1.1.25.
+        # Recognized in the reviewed 1.2.17 binary; effective exclusion still
+        # requires runtime zero-tool init (not verified by offline fixtures).
+        # Empty lists must not inherit ambient/built-in customizations.
         "inheritCustomizations": False, "excludeDefaultComponents": True,
     }
     directory = root / ".agents/agents"
