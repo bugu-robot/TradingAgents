@@ -43,6 +43,11 @@ def _auth_error(message: str) -> SubscriptionError:
     return SubscriptionError(message, kind="auth")
 
 
+def _has_plan_permission(scopes) -> bool:
+    return (isinstance(scopes, list) and all(isinstance(scope, str) for scope in scopes)
+            and {DIRECT_SCOPE, "resource.invoke"} <= set(scopes))
+
+
 def _read_json(path: Path) -> dict:
     if path.is_symlink():
         raise _auth_error("Subscription credential files must not be symbolic links.")
@@ -155,16 +160,16 @@ class ChatGPTAuthStore:
         record = self.read()
         return {"profile": self.profile, "email": record.get("email"),
                 "connected": bool(record.get("access_token")),
-                "plan_usage_enabled": DIRECT_SCOPE in record.get("scopes", []),
+                "plan_usage_enabled": _has_plan_permission(record.get("scopes")),
                 "expires_at": record.get("expires_at")}
 
     def preflight(self) -> dict:
         record = self.read()
-        if not all(record.get(k) for k in ("client_id", "subject", "access_token")):
+        if not all(isinstance(record.get(k), str) and record[k] for k in ("client_id", "subject", "access_token")):
             raise _auth_error("No ChatGPT Plan login. Run: tradingagents auth login chatgpt_plan")
         if record["client_id"] == "dynamic_agent_client" or record.get("issuer") != AUTH_ORIGIN:
             raise _auth_error("ChatGPT credential registration is invalid; sign in again.")
-        if DIRECT_SCOPE not in record.get("scopes", []) or "resource.invoke" not in record.get("scopes", []):
+        if not _has_plan_permission(record.get("scopes")):
             raise _auth_error("ChatGPT sign-in has no plan-use permission. Sign in again and enable ChatGPT plan usage.")
         try:
             expires = float(record.get("expires_at", 0))
@@ -233,7 +238,7 @@ class ChatGPTAuthStore:
         self.activate_if_enabled()
 
     def activate_if_enabled(self):
-        if {DIRECT_SCOPE, "resource.invoke"} <= set(self.read().get("scopes", [])):
+        if _has_plan_permission(self.read().get("scopes")):
             _write_json(self.directory / "active.json", {"profile": self.profile})
 
     def logout(self) -> bool:
@@ -289,7 +294,10 @@ def _get_json(url: str) -> dict:
         with requests.get(_trusted_url(url), timeout=20, allow_redirects=False) as response:
             if response.status_code != 200:
                 raise SubscriptionError("OpenAI identity metadata is unavailable.", kind="transient")
-            return response.json()
+            body = response.json()
+            if not isinstance(body, dict):
+                raise SubscriptionError("OpenAI returned malformed identity metadata.", kind="malformed_output")
+            return body
     except (requests.RequestException, ValueError):
         raise SubscriptionError("Cannot retrieve OpenAI identity metadata.", kind="transient") from None
 
@@ -297,7 +305,12 @@ def _get_json(url: str) -> dict:
 def _token_request(data: dict) -> dict:
     try:
         with requests.post(TOKEN_URL, data=data, timeout=20, allow_redirects=False) as response:
-            body = response.json()
+            try:
+                body = response.json()
+            except ValueError:
+                if response.status_code == 200:
+                    raise _auth_error("OpenAI returned malformed token data.") from None
+                body = {"detail": "Non-JSON token admission error."}
             if response.status_code != 200:
                 raise response_error(body, status=response.status_code,
                                      request_id=response.headers.get("x-request-id"),

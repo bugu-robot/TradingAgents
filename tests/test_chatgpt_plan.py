@@ -208,3 +208,99 @@ def test_account_model_catalog_filters_visibility_and_uses_oauth(model, monkeypa
     assert plan.model_options() == [("One", "one")]
     assert calls[0][0].endswith("/v1/models")
     assert calls[0][1]["headers"]["Authorization"] == "Bearer access-secret"
+
+
+@pytest.mark.parametrize("event", [
+    {"type": "response.failed", "response": None},
+    {"type": "response.failed", "response": []},
+    {"type": "response.completed", "response": []},
+    {"type": ["response.completed"]},
+])
+def test_malformed_terminal_events_are_classified_without_retry_or_fallback(model, posted, event):
+    calls, outputs = posted
+    model.max_retries = 2
+    outputs.append(Response([event]))
+    with pytest.raises(SubscriptionError) as error:
+        model.invoke("hello")
+    assert error.value.kind == "malformed_output" and len(calls) == 1
+
+
+@pytest.mark.parametrize("overrides", [
+    {"usage": ["opaque-untrusted-output"]},
+    {"usage": {"input_tokens": "opaque-untrusted-output"}},
+    {"usage": {"output_tokens": -1}},
+    {"output": [{"type": "message", "content": {"type": "output_text"}}]},
+    {"output": [{"type": "message", "content": [{"type": "output_text", "text": 1}]}]},
+    {"output": [{"type": "message", "content": [{"type": "unknown"}]}]},
+])
+def test_malformed_completion_content_and_usage_have_safe_errors(model, posted, overrides):
+    _, outputs = posted
+    event = completed()
+    event["response"].update(overrides)
+    outputs.append(Response([event]))
+    with pytest.raises(SubscriptionError) as error:
+        model.invoke("hello")
+    assert error.value.kind == "malformed_output"
+    assert "opaque-untrusted-output" not in str(error.value)
+
+
+@pytest.mark.parametrize("body", [[], {"models": [None]}, {"models": "opaque"},
+                                     {"models": [{"visibility": "list", "slug": None, "display_name": "Name"}]}])
+def test_malformed_catalog_is_actionable_and_does_not_leak_raw_data(model, monkeypatch, body):
+    monkeypatch.setattr(plan.requests, "get", lambda *a, **k: Response(body=body))
+    with pytest.raises(SubscriptionError, match="model catalog"):
+        plan.model_options()
+
+
+def test_real_sse_bytes_use_utf8_regardless_of_requests_text_default(model, posted):
+    import io
+
+    _, outputs = posted
+    class EventStream(Response, requests.Response):
+        def iter_lines(self, **kwargs):
+            yield from requests.Response.iter_lines(self, **kwargs)
+
+    response = EventStream()
+    response.encoding = "ISO-8859-1"  # Requests default for text/event-stream
+    response.raw = io.BytesIO(('data: ' + json.dumps(completed("廣東話報告 ☕"), ensure_ascii=False) + '\n\n').encode())
+    response._content_consumed = False
+    outputs.append(response)
+    assert model.invoke("hello").content == "廣東話報告 ☕"
+
+
+def test_completed_terminal_event_does_not_wait_for_eof_or_repeat_inference(model, posted):
+    calls, outputs = posted
+
+    class Stream(Response):
+        def iter_lines(self, **kwargs):
+            yield from super().iter_lines(**kwargs)
+            raise requests.ReadTimeout("peer kept the socket open after completion")
+
+    outputs.append(Stream([completed()]))
+    model.max_retries = 2
+    assert model.invoke("hello").content == "OK" and len(calls) == 1
+
+
+def test_invalid_utf8_is_rejected_without_raw_content(model, posted):
+    _, outputs = posted
+
+    class Stream(Response):
+        def iter_lines(self, **kwargs):
+            yield b'data: \xff opaque-untrusted-content'
+
+    outputs.append(Stream())
+    with pytest.raises(SubscriptionError) as error:
+        model.invoke("hello")
+    assert error.value.kind == "malformed_output" and "opaque-untrusted-content" not in str(error.value)
+
+
+@pytest.mark.parametrize("kind,status", [("auth", 401), ("permission", 403)])
+def test_non_json_catalog_admission_keeps_http_auth_classification(model, monkeypatch, kind, status):
+    class Admission(Response):
+        def json(self):
+            raise ValueError("opaque-untrusted-diagnostic")
+
+    monkeypatch.setattr(plan.requests, "get", lambda *a, **k: Admission(status=status))
+    with pytest.raises(SubscriptionError) as error:
+        plan.model_options()
+    assert error.value.kind == kind and "opaque-untrusted-diagnostic" not in str(error.value)

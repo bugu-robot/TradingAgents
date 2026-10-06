@@ -127,9 +127,14 @@ def _retry_after(value: str | None) -> float | None:
 def _events(response):
     """SSE data records, including multiline records and error terminal events."""
     data = []
-    for line in response.iter_lines(decode_unicode=True):
+    # SSE is UTF-8. Requests otherwise defaults text/event-stream without an
+    # explicit charset to Latin-1, corrupting non-ASCII reports and tool args.
+    for line in response.iter_lines(decode_unicode=False):
         if isinstance(line, bytes):
-            line = line.decode("utf-8")
+            try:
+                line = line.decode("utf-8")
+            except UnicodeDecodeError:
+                raise SubscriptionError("Malformed UTF-8 in ChatGPT Responses stream.", kind="malformed_output") from None
         if not line:
             if data:
                 yield "\n".join(data)
@@ -150,17 +155,21 @@ def _completed_response(response, access_token: str) -> dict:
             body = {"detail": "Non-JSON admission error."}
         raise response_error(body, status=response.status_code, request_id=request_id,
                              retry_after=retry_after, secrets=(access_token,))
-    completed = None
     for data in _events(response):
         if data == "[DONE]":
             continue
         try:
             event = json.loads(data)
             event_type = event["type"]
+            if not isinstance(event_type, str):
+                raise ValueError("Invalid event type.")
         except (ValueError, KeyError, TypeError):
             raise SubscriptionError("Malformed ChatGPT Responses event.", kind="malformed_output", request_id=request_id) from None
         if event_type in {"response.failed", "error"}:
-            error = event.get("response", {}).get("error") or event.get("error") or event
+            failed = event.get("response")
+            if event_type == "response.failed" and not isinstance(failed, dict):
+                raise SubscriptionError("Malformed ChatGPT failure event.", kind="malformed_output", request_id=request_id)
+            error = (failed.get("error") if isinstance(failed, dict) else None) or event.get("error") or event
             raise response_error({"error": error}, request_id=request_id,
                                  retry_after=retry_after, secrets=(access_token,))
         if event_type == "response.incomplete":
@@ -168,29 +177,36 @@ def _completed_response(response, access_token: str) -> dict:
                                     kind="incomplete", request_id=request_id)
         if event_type == "response.completed":
             completed = event.get("response")
-    if not isinstance(completed, dict) or completed.get("status") != "completed":
-        raise SubscriptionError("ChatGPT stream ended without a completed response.", kind="interrupted", request_id=request_id)
-    return completed
+            if not isinstance(completed, dict) or completed.get("status") != "completed":
+                raise SubscriptionError("Malformed ChatGPT completion event.", kind="malformed_output", request_id=request_id)
+            return completed  # completed is terminal; do not wait for socket EOF
+    raise SubscriptionError("ChatGPT stream ended without a completed response.", kind="interrupted", request_id=request_id)
 
 
-def response_message(response: dict, tool_names: set[str]) -> AIMessage:
+def response_message(response: dict, tool_names: set[str], *, previous_call_ids: set[str] | None = None) -> AIMessage:
     output = response.get("output")
     if not isinstance(output, list):
         raise SubscriptionError("ChatGPT response has no output array.", kind="malformed_output")
-    texts, calls, ids = [], [], set()
+    texts, calls, ids = [], [], set(previous_call_ids or ())
     try:
         for item in output:
             if item["type"] == "message":
+                if not isinstance(item["content"], list) or item.get("role", "assistant") != "assistant":
+                    raise ValueError("Invalid assistant content.")
                 for block in item["content"]:
                     if block["type"] == "refusal":
                         raise SubscriptionError("ChatGPT declined the request.", kind="refusal")
                     if block["type"] == "output_text":
+                        if not isinstance(block["text"], str):
+                            raise ValueError("Invalid output text.")
                         texts.append(block["text"])
+                    else:
+                        raise ValueError("Unexpected content block.")
             elif item["type"] == "function_call":
                 name, call_id = item["name"], item["call_id"]
                 if name not in tool_names or item.get("namespace", _NAMESPACE) != _NAMESPACE:
                     raise ValueError("Unknown function.")
-                if not call_id or call_id in ids:
+                if not isinstance(call_id, str) or not call_id or call_id in ids:
                     raise ValueError("Missing or duplicate call ID.")
                 arguments = json.loads(item["arguments"])
                 if not isinstance(arguments, dict):
@@ -203,7 +219,13 @@ def response_message(response: dict, tool_names: set[str]) -> AIMessage:
         raise SubscriptionError("ChatGPT returned malformed or unbound tool calls.", kind="malformed_output") from None
     if not texts and not calls:
         raise SubscriptionError("ChatGPT completed with no text or tool calls.", kind="malformed_output")
-    usage = response.get("usage") or {}
+    usage = response.get("usage")
+    usage = {} if usage is None else usage
+    if not isinstance(usage, dict) or any(
+        not isinstance(usage.get(key, 0), int) or isinstance(usage.get(key, 0), bool) or usage.get(key, 0) < 0
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+    ):
+        raise SubscriptionError("ChatGPT returned malformed usage metadata.", kind="malformed_output")
     return AIMessage(content="\n".join(texts), tool_calls=calls,
                      additional_kwargs={"responses_output": deepcopy(output)},
                      response_metadata={"provider": "chatgpt_plan", "model_name": response.get("model"),
@@ -291,6 +313,8 @@ class ChatGPTPlanChatModel(BaseChatModel):
         if self.reasoning_effort:
             payload["reasoning"] = {"effort": self.reasoning_effort}
         tools = {t["name"] for namespace in payload.get("tools", []) for t in namespace["tools"]}
+        previous_call_ids = {call["id"] for message in messages if isinstance(message, AIMessage)
+                             for call in message.tool_calls}
         for attempt in range(self.max_retries + 1):
             try:
                 access_token = self._auth.access_token()
@@ -298,7 +322,7 @@ class ChatGPTPlanChatModel(BaseChatModel):
                                    headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
                                    stream=True, timeout=(15, self.timeout), allow_redirects=False) as response:
                     completed = _completed_response(response, access_token)
-                message = response_message(completed, tools)
+                message = response_message(completed, tools, previous_call_ids=previous_call_ids)
                 return ChatResult(generations=[ChatGeneration(message=message)])
             except requests.Timeout:
                 error = SubscriptionError("ChatGPT plan request timed out.", kind="timeout")
@@ -340,9 +364,24 @@ def model_options():
     try:
         with requests.get(f"{RESOURCE}/models", headers={"Authorization": f"Bearer {access_token}"},
                           timeout=30, allow_redirects=False) as response:
-            body = response.json()
+            try:
+                body = response.json()
+            except ValueError:
+                if response.status_code == 200:
+                    raise
+                body = {"detail": "Non-JSON catalog admission error."}
             if response.status_code != 200:
                 raise response_error(body, status=response.status_code, secrets=(access_token,))
-        return [(m["display_name"], m["slug"]) for m in body["models"] if m.get("visibility") == "list"]
+        if not isinstance(body, dict) or not isinstance(body.get("models"), list):
+            raise ValueError("Invalid catalog envelope.")
+        options = []
+        for model in body["models"]:
+            if not isinstance(model, dict):
+                raise ValueError("Invalid catalog entry.")
+            if model.get("visibility") == "list":
+                if not all(isinstance(model.get(k), str) and model[k].strip() for k in ("display_name", "slug")):
+                    raise ValueError("Invalid catalog label.")
+                options.append((model["display_name"], model["slug"]))
+        return options
     except (requests.RequestException, ValueError, KeyError, TypeError):
         raise SubscriptionError("Cannot read the selected ChatGPT account's model catalog.", kind="transient") from None

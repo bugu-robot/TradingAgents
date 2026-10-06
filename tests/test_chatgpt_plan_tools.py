@@ -85,6 +85,23 @@ def test_duplicate_response_call_ids_are_rejected(model, posted):
         model.bind_tools([stock_price]).invoke("fetch")
 
 
+def test_reused_call_id_is_rejected_before_a_second_market_tool_execution(model, posted, monkeypatch):
+    import tradingagents.agents.tools as tools_module
+
+    calls, outputs = posted
+    executed = []
+    monkeypatch.setattr(tools_module, "route_to_vendor", lambda *args: executed.append(args) or "stock data")
+    for _ in range(2):
+        outputs.append(Response([completed(output=[function("get_stock_data", "same-call", {
+            "start_date": "2026-09-01", "end_date": "2026-10-02"})])]))
+    graph = _analyst_graph(ANALYST_NODE_SPECS["market"], create_market_analyst(model), max_tool_rounds=5)
+    with pytest.raises(SubscriptionError) as error:
+        graph.invoke({"company_of_interest": "AAPL", "trade_date": "2026-10-02",
+                      "messages": [HumanMessage("Analyze AAPL")]})
+    assert error.value.kind == "malformed_output"
+    assert len(calls) == 2 and len(executed) == 1
+
+
 @pytest.mark.parametrize("choice,expected", [("auto", "auto"), (True, "required"),
                                             ("stock_price", {"type": "function", "namespace": "tradingagents", "name": "stock_price"})])
 def test_tool_choice_uses_responses_format(model, posted, choice, expected):

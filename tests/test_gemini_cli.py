@@ -102,6 +102,14 @@ def test_malformed_settings_never_print_credentials(google_home):
     assert "SECRET" not in str(error.value)
 
 
+@pytest.mark.parametrize("value", [None, [], "access_token=SECRET", 42])
+def test_valid_json_with_malformed_auth_settings_is_a_safe_auth_error(google_home, value):
+    (google_home / "settings.json").write_text(json.dumps({"security": {"auth": value}}))
+    with pytest.raises(SubscriptionError) as error:
+        cli.preflight()
+    assert error.value.kind == "auth" and "SECRET" not in str(error.value)
+
+
 def test_headless_invoke_isolated_settings_stdin_history_no_api_fallback(model, monkeypatch):
     requests = []
     for key in cli._BILLING_ENV:

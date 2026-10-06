@@ -81,6 +81,8 @@ def preflight(executable: str | None = None) -> tuple[str, str]:
     try:
         settings = json.loads((home / "settings.json").read_text(encoding="utf-8"))
         auth = settings.get("security", {}).get("auth", {})
+        if not isinstance(auth, dict):
+            raise ValueError("Invalid authentication settings.")
     except (OSError, ValueError, AttributeError):
         raise SubscriptionError("No readable Gemini CLI authentication settings. Run gemini interactively "
                                 "and select Sign in with Google using your Google AI Pro account.", kind="auth") from None

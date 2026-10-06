@@ -358,6 +358,38 @@ def test_token_admission_request_id_redacts_known_code_and_refresh_token(monkeyp
     assert error.value.request_id == "[REDACTED]"
 
 
+def test_non_json_token_admission_keeps_auth_classification(monkeypatch):
+    from .test_chatgpt_plan import Response
+
+    class Admission(Response):
+        def json(self):
+            raise ValueError("opaque-renewal-secret")
+
+    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: Admission(status=401))
+    with pytest.raises(SubscriptionError) as error:
+        auth._token_request({"grant_type": "refresh_token", "refresh_token": "opaque-renewal-secret"})
+    assert error.value.kind == "auth" and "opaque-renewal-secret" not in str(error.value)
+
+
+@pytest.mark.parametrize("scopes", [None, auth.SCOPES, [{"scope": auth.DIRECT_SCOPE}], [auth.DIRECT_SCOPE]])
+def test_status_and_activation_require_both_valid_granted_permissions(store, scopes):
+    connect(store, scopes=scopes)
+    assert not store.status()["plan_usage_enabled"]
+    store.activate_if_enabled()
+    assert not (store.directory / "active.json").exists()
+    with pytest.raises(SubscriptionError, match="plan-use permission"):
+        store.preflight()
+
+
+def test_malformed_discovery_response_does_not_crash_identity_validation(monkeypatch):
+    from .test_chatgpt_plan import Response
+
+    monkeypatch.setattr(auth.requests, "get", lambda *a, **k: Response(body=[]))
+    with pytest.raises(SubscriptionError) as error:
+        auth.validate_identity("untrusted-identity-data", "oaiapp_a", "nonce")
+    assert error.value.kind == "malformed_output" and "untrusted-identity-data" not in str(error.value)
+
+
 @pytest.mark.parametrize("label", ["../auth", "..", "a/b", "", "a" * 65])
 def test_invalid_profile_labels(store, label):
     if not label:  # empty means use the current default, not a path component
