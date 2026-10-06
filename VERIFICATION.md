@@ -4,14 +4,13 @@ Updated **2026-10-06 UTC**. **OFFLINE VERIFIED is not LIVE VERIFIED.** Draft PR 
 remains unmerged. No subscription inference, user OAuth login or complete AAPL
 run has been live verified.
 
-**Current functional blocker:** the SHA-512-verified official Linux `agy`
-1.2.17 executable rejects the changelog-documented
-`agy models --output-format json` flag. TradingAgents deliberately does not parse
-human rows, so `tradingagents auth models antigravity_cli` and any Antigravity
-inference fail closed on that exact binary. Do not run the live model tests until
-an official compatible build is reviewed and its actual JSON catalog output is
-captured and validated. This is unrelated to account-attestation: cached auth
-and non-inference `/usage` are documented.
+Antigravity catalog discovery uses the maintainer-corrected global-flag form
+`agy --output-format json models`. The prior blocker incorrectly placed the
+global flag after the `models` subcommand; it has been removed. The reviewed
+adapter remains pinned to 1.2.17. A newer stable 1.3.0 was reported/observed
+after the previous review but has not been adapter-reviewed; review it
+separately after this pinned version passes live acceptance. Do not upgrade to
+1.3.0 as part of this correction.
 
 `tradingagents auth status antigravity_cli` performs safe local configuration
 checks, verifies the expected CLI, then calls official
@@ -34,8 +33,9 @@ Python **3.12.14**, UTC, optional Bedrock installed. No AWS/provider service use
 | Check | Actual result |
 | --- | --- |
 | Clean upstream v0.6.0/tag `1394a3f72aa4393e1a98f51b382434c4b4c2d972`, detached test worktree | **1,263 passed**, 1 upstream integration deselected, 99 subtests passed |
-| Full feature branch suite | **1,678 passed**, 7 integration deselected, 100 subtests passed |
-| Subscription offline modules | **415 passed** in the dedicated run and included in the full suite |
+| Full feature branch suite after catalog-order correction | **1,693 passed**, 7 integration deselected, 100 subtests passed |
+| Subscription offline modules | **430 passed** in the dedicated run and included in the full suite |
+| Focused Antigravity catalog/transport suite | **266 passed** |
 | Explicit subscription LIVE collection, default guards | **6 skipped**, 0 executed |
 | Warnings | **20** upstream unknown-model RuntimeWarnings; not suppressed |
 | Ruff across repository / `git diff --check` | Passed / passed |
@@ -70,7 +70,7 @@ tests. Normal pytest forbids service sockets and excludes integration tests.
 | --- | --- |
 | CLI discovery/version/public headless flags | `test_antigravity_cli.py`: missing executable, unverified version, each required flag; actual official Linux version/help also inspected |
 | Subscription admission/API/Vertex/custom endpoint/policy | Real settings parsed read-only; conflicting config fails before child startup. CLI owns cached sign-in; documented auth errors are classified and terminal |
-| Catalog/models/effort | JSON-only `agy models --output-format json`, strict expected-envelope fixture tests for Gemini/Claude/other safe families, unknown/duplicate/malformed rejection, independent menus and low/medium/high effort. Actual pinned 1.2.17 rejects the flag; the fixture is not actual-output verification and text fallback is forbidden |
+| Catalog/models/effort | JSON-only `agy --output-format json models`; strict `SUCCESS`, absent/empty `error`, integer-zero `num_turns`, `command.name == models`, `command.data.models`, safe unique slugs, bounded printable labels, family-neutral model tests, malformed/duplicate rejection and no text fallback |
 | Read-only account/usage status | `auth status` calls `agy -p "/usage" --output-format json`; require SUCCESS and zero turns, no model transport, no raw payload or entitlement inference. Actual authenticated backend success remains LIVE PENDING |
 | Effective `/config` and `/permissions` | Not adopted as machine safety validators: release notes advertise JSON, but stable field schemas are not documented. Retain local config/policy checks |
 | Environment isolation | All requested Gemini/Google/Vertex/project/ADC variables plus gateway, enterprise, custom-agent, proxy and future routing switches excluded; parent environment unchanged |
@@ -95,8 +95,8 @@ entitlement, exact official model JSON shape or effective sandboxing.
 | 1 | ChatGPT Plus multi-message conversation |
 | 2 | ChatGPT Plan native JSON Schema/Pydantic output |
 | 3 | Two sequential TradingAgents-controlled tool rounds and ToolMessage continuation |
-| 4 | Antigravity Google AI Pro cached sign-in/headless text, no autonomous tools; requires a fixed official model JSON catalog command |
-| 5 | Antigravity native JSON Schema and validated response; same catalog prerequisite |
+| 4 | Antigravity Google AI Pro cached sign-in/headless text, no autonomous tools, using the reviewed CLI 1.2.17 and global-flag model catalog |
+| 5 | Antigravity native JSON Schema and validated response with the selected catalog model |
 | 6 (optional) | Dummy API/Vertex/gateway variables cannot switch provider or cause API requests |
 
 Also require account catalogs, actual Pro/Plus quota/credit inspection and one
@@ -117,13 +117,16 @@ If keyring access is unavailable, follow the
 do not export/copy secure Google tokens. These steps use one verification session
 with a local OAuth/browser companion, not separate repeated user tests.
 
-For the current pinned 1.2.17 binary, this session must stop before model
-selection or any Antigravity model turn: `agy models --help` omits
-`--output-format`, and `agy models --output-format json` exits with an unknown
-flag. That flag is advertised by the official changelog but not implemented by
-the verified binary. Update the adapter's pinned version only after an official
-release is independently hash/version verified, then inspect and fixture its
-actual JSON envelope. Never use human display parsing as a workaround.
+Use the reviewed pinned 1.2.17 for this acceptance. The correct non-inference
+catalog command is `agy --output-format json models`; `--output-format` is a
+global flag and must precede the subcommand. The preferred gate is
+`tradingagents auth models antigravity_cli`, which executes the command and
+applies strict envelope/parser checks without consuming a model turn. Do not
+use `agy models --help` as a support test and never parse human display rows.
+
+The newer stable 1.3.0 is outside this live acceptance and has not been reviewed
+by the adapter. If 1.2.17 passes acceptance, review 1.3.0 in a separate
+compatibility task before changing the version pin.
 
 ### 1. Checkout and dependencies, then preserve the VM host ID
 
@@ -322,18 +325,14 @@ SUCCESS with zero turns. It reports local readiness separately from successful
 cached-account/backend usage access; it does not claim Google AI Pro or extract
 undocumented plan/quota fields. Capture private official usage evidence before
 model requests, after smoke requests and after the full AAPL run. The selected
-models remain independent; model selection is blocked on current official CLI
-1.2.17 until its documented models JSON flag works.
+models remain independent. Catalog discovery must complete through the
+official global-flag JSON command; any command or envelope error fails closed.
 
 ```bash
 tradingagents auth status chatgpt_plan
 tradingagents auth status antigravity_cli
-if ! agy models --help 2>&1 | grep -q -- '--output-format'; then
-  echo 'BLOCKED: this agy build lacks machine-readable model discovery; no Antigravity inference is allowed.' >&2
-  exit 1
-fi
-# Even when the flag appears in help, auth models must return strict JSON. Never
-# parse the human `agy models` display rows or submit a turn to discover models.
+# This invokes the official non-inference catalog command and strict parser.
+# Never inspect subcommand help or parse human `agy models` display rows.
 tradingagents auth models antigravity_cli
 read -r -p 'Antigravity catalog slug (any listed safe family): ' ANTIGRAVITY_LIVE_MODEL
 read -r -p 'Antigravity effort (low/medium/high): ' ANTIGRAVITY_LIVE_EFFORT

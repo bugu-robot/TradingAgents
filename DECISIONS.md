@@ -157,15 +157,12 @@ settings and the full all-node AAPL Markdown/HTML report. Local preflight and
 catalog presence are not plan proof, and future model availability may change.
 Keep Draft PR #1 unmerged and production acceptance pending that evidence.
 
-## 2026-10-06 — Require JSON-only model discovery and fail on the 1.2.17 mismatch
+## 2026-10-06 — Require JSON-only model discovery (superseded argument order)
 
-Use exactly `agy models --output-format json`; do not scrape terminal rows. The
-verified official Linux 1.2.17 executable rejects the flag even though the
-official changelog advertises it. The official issue tracker documents the same
-release-note/binary mismatch. Keep family-neutral slug validation and strict
-JSON parsing, but report that the expected catalog envelope has not been
-verified against a successful 1.2.17 response. Fail closed until an official
-build exposes the advertised flag and its actual JSON output is verified.
+The initial command used `agy models --output-format json`, incorrectly placing
+the global flag after the subcommand. The conclusion that 1.2.17 lacked the
+catalog interface was therefore invalid. This entry is superseded by the
+maintainer clarification recorded in the later correction below.
 
 ## 2026-10-06 — Use official zero-turn `/usage` for read-only account readiness
 
@@ -187,13 +184,11 @@ for optional human evidence, not automatic policy authorization.
 
 ## 2026-10-06 — Keep actual verification evidence distinct from fixtures
 
-Parser fixtures cover the candidate JSON envelope `command.data.models`, but
-the verified 1.2.17 binary rejects its output-format flag, so the fixture is not
-evidence of the actual official emitted shape. Status reachability tests likewise
-prove adapter control flow only; they do not prove live cached credentials,
-Google AI Pro plan/quota, request billing, or effective sandbox behavior. Keep
-the Draft PR unmerged until a fixed official CLI, live quota evidence and the
-full analyst/manager AAPL run all pass.
+The maintainer-confirmed catalog envelope is `command.data.models`; parser
+fixtures and fake-executable tests verify that contract and the global-flag
+ordering, but do not prove live cached credentials, Google AI Pro plan/quota,
+request billing, or effective sandbox behavior. Keep the Draft PR unmerged
+until live quota evidence and the full analyst/manager AAPL run pass.
 
 ## 2026-10-06 — Record final offline correction validation and cancellation cleanup
 
@@ -204,8 +199,9 @@ executed. Ruff, diff check, compile/import and 102-package `uv pip check` pass.
 The OAuth loopback regression passed with loopback-only test permission; no
 external service or credentials were used. Async cancellation joins its owned
 worker/process cleanup before returning. The `agy models` JSON compatibility
-blocker remains a separate external prerequisite; none of these offline results
-verify real subscription entitlement or quota.
+blocker was still recorded at that prior checkpoint; the following dated
+correction establishes that it resulted from incorrect global-flag ordering.
+None of these offline results verify real subscription entitlement or quota.
 
 ## 2026-10-06 — Make `auth status` an official non-inference usage check
 
@@ -215,3 +211,27 @@ JSON output. Require a standard SUCCESS response and zero `num_turns`; report
 local readiness separately from backend reachability. Discard the response and
 do not claim a plan/quota value that lacks a documented schema. `/config` and
 `/permissions` JSON remain unparsed until stable public field contracts exist.
+
+## 2026-10-06 — Correct the Antigravity catalog global-flag order
+
+Supersedes the earlier 1.2.17 catalog-blocker decision above. Official issue
+#777 clarifies that `--output-format` is global and must precede the subcommand:
+use `agy --output-format json models`. The previous `agy models --output-format
+json` check used invalid ordering. Validate the maintainer-confirmed envelope:
+root object, `status == SUCCESS`, absent/empty `error`, integer
+`num_turns == 0`, `command.name == models`, object `command.data`, and a
+non-empty bounded `command.data.models` list. Reject malformed/duplicate/unsafe
+slugs and do not parse human text. Keep the production adapter pinned at
+1.2.17; the newer stable 1.3.0 was observed/reported after the previous review
+but has not been compatibility-reviewed. Consider it separately after this
+version passes consolidated live acceptance. The next step is live acceptance;
+catalog presence and offline tests still do not prove account entitlement.
+
+Correction validation on 2026-10-06: full suite **1,693 passed**, 7 integration
+tests deselected, 20 existing warnings and 100 subtests; dedicated subscription
+suite **430 passed** and focused Antigravity suite **266 passed**. Six opt-in
+subscription live tests remain skipped and zero were executed. Ruff,
+`git diff --check`, compile/import passed. No live login or subscription request
+was made; run the consolidated live acceptance next with the reviewed 1.2.17
+pin. Keep Draft PR #1 unmerged. Review reported stable 1.3.0 separately after
+the current pin passes live acceptance.

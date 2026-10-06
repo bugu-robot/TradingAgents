@@ -69,15 +69,20 @@ and does not infer plan/quota values absent from the stable payload. This check
 does not prove Google AI Pro entitlement. No separate attestation endpoint or
 speculative account/model prompt is needed.
 
-The official changelog advertises `agy models --output-format json`, but the
-SHA-512-verified official Linux 1.2.17 binary rejects the flag and its help omits
-it. The adapter uses that exact JSON-only command and never falls back to human
-text; consequently Antigravity model discovery and inference fail closed on
-that build. Parser fixtures exercise the expected `command.data.models` envelope
-with `id`/optional `label`, but that shape is **not verified against a successful
-official 1.2.17 response** because the command cannot produce one. Do not claim
-the shape is official until a fixed official binary emits it. Model catalog
-presence is not entitlement evidence.
+Official Antigravity issue #777 clarifies that `--output-format` is a global
+flag and must precede the subcommand. Use `agy --output-format json models`;
+`agy models --output-format json` is the wrong ordering. The maintainer-confirmed
+response envelope contains `status`, `error`, `num_turns` and
+`command.name/data.models`. The adapter requires `SUCCESS`, no error, exactly
+zero turns, the `models` command name, and a non-empty bounded model list. Each
+entry must have a safe unique slug and optional bounded printable label. It
+never falls back to terminal text. Catalog presence is not entitlement
+evidence.
+
+The reviewed adapter remains pinned to official CLI **1.2.17**. A newer stable
+**1.3.0** was reported/observed after the earlier review but has not been
+compatibility-reviewed. Do not upgrade as part of this correction; review it
+separately after the current pinned adapter passes live acceptance.
 
 `/config` and `/permissions` are also advertised as non-inference JSON commands,
 but their stable machine field schemas are not published. They are not parsed
@@ -100,15 +105,14 @@ or bypasses those settings. Always-proceed and unknown modes are rejected.
 ## Independent model selection
 
 Quick and Deep model selections are independent. ChatGPT slugs come from the
-official signed-in account catalog. When the official Antigravity JSON catalog
-command works, accept safe slugs from any returned family; do not restrict the
-catalog to Gemini. Require conservative slug syntax plus fresh catalog
+official signed-in account catalog. Antigravity catalogs use
+`agy --output-format json models`; accept safe slugs from any returned family,
+not just Gemini. Require conservative slug syntax plus fresh catalog
 membership before each inference; reject custom provider/model settings and
 unlisted IDs. Pass the exact selected slug using `--model`; mismatched init and
 unknown/unavailable models fail without fallback. Availability changes and does
-not guarantee plan entitlement. Current official CLI 1.2.17 lacks the
-documented models JSON flag, so its Antigravity catalog/model selection is
-currently unavailable rather than parsed from human text.
+not guarantee plan entitlement. CLI 1.3.0 remains outside the adapter review
+until a separate post-acceptance compatibility task.
 Antigravity effort is independently selected as low, medium or high through
 `TRADINGAGENTS_ANTIGRAVITY_EFFORT`; provider/model values use existing tier env
 variables. OpenAI authentication and API-provider behavior remain unchanged.
