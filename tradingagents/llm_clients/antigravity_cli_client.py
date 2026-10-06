@@ -352,17 +352,29 @@ def _catalog_models(executable: str, cancellation: threading.Event | None = None
     # Recheck actual settings before the catalog child too. No cached catalog:
     # availability changes and the exact slug must still be present at invocation.
     _configuration_preflight()
-    result = _command(executable, ["models", "--output-format", "json"], timeout=30,
+    # --output-format is a global flag and must precede the subcommand.
+    result = _command(executable, ["--output-format", "json", "models"], timeout=30,
                       cancellation=cancellation)
     if result.returncode:
         if "flags provided but not defined" in (result.stdout + result.stderr).lower() and "output-format" in (result.stdout + result.stderr).lower():
-            raise _failure("This Antigravity CLI build does not implement the documented JSON model-list flag. "
-                           "Upgrade to a build whose `agy models --help` exposes --output-format; "
+            raise _failure("Antigravity rejected the global JSON output flag for model discovery; "
                            "human-readable parsing is disabled.", "unsupported_cli") from None
         raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
     try:
         envelope = _json_object(result.stdout)
-        models_data = envelope["command"]["data"]["models"]
+        if envelope.get("status") != "SUCCESS":
+            raise ValueError("Catalog command did not succeed")
+        if "error" in envelope and envelope["error"] not in (None, "", {}, []):
+            raise ValueError("Catalog command returned an error")
+        if type(envelope.get("num_turns")) is not int or envelope["num_turns"] != 0:
+            raise ValueError("Catalog command unexpectedly consumed a model turn")
+        command = envelope.get("command")
+        if not isinstance(command, dict) or command.get("name") != "models":
+            raise ValueError("Unexpected catalog command envelope")
+        data = command.get("data")
+        if not isinstance(data, dict):
+            raise ValueError("Invalid catalog command data")
+        models_data = data.get("models")
         if not isinstance(models_data, list) or not models_data or len(models_data) > 1024:
             raise ValueError("Invalid model array")
         models, seen = [], set()
@@ -373,7 +385,7 @@ def _catalog_models(executable: str, cancellation: threading.Event | None = None
             label = item.get("label")
             if (not _valid_model(slug) or slug in seen or
                     (label is not None and (not isinstance(label, str) or len(label) > 160
-                                            or any(ord(ch) < 32 or ord(ch) == 127 for ch in label)))):
+                                            or any(not ch.isprintable() for ch in label)))):
                 raise ValueError("Invalid or duplicate model metadata")
             seen.add(slug)
             models.append(slug)

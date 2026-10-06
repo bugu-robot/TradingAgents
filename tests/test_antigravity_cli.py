@@ -187,11 +187,21 @@ def test_configured_reviewed_cli_never_sends_speculative_account_prompt(safe_hom
 CATALOG = ('gemini-3.1-pro-high', 'claude-sonnet-4-6-thinking', 'gpt-oss-120b')
 
 
-def catalog_json(slugs=CATALOG):
-    # CLI JSON command envelope: command.data.models is a list of id/label rows.
-    return json.dumps({"command": {"data": {"models": [
-        {"id": slug, "label": f"Official label for {slug}"} for slug in slugs
-    ]}}})
+def catalog_json(slugs=CATALOG, **overrides):
+    # Maintainer-confirmed global --output-format JSON result envelope.
+    payload = {
+        "conversation_id": "",
+        "status": "SUCCESS",
+        "response": "",
+        "duration_seconds": 0,
+        "num_turns": 0,
+        "usage": {},
+        "command": {"name": "models", "data": {"models": [
+            {"id": slug, "label": f"Official label for {slug}"} for slug in slugs
+        ]}},
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
 
 
 def test_catalog_discovery_uses_only_official_non_inference_command(safe_home, monkeypatch):
@@ -202,21 +212,44 @@ def test_catalog_discovery_uses_only_official_non_inference_command(safe_home, m
     def probe(exe, args, **kwargs):
         calls.append(args)
         output = {('--version',): cli.VERIFIED_VERSION, ('--help',): '\n'.join(cli.REQUIRED_FLAGS),
-                  ('models', '--output-format', 'json'): catalog_json()}[tuple(args)]
+                  ('--output-format', 'json', 'models'): catalog_json()}[tuple(args)]
         return subprocess.CompletedProcess(args, 0, output, '')
     monkeypatch.setattr(cli, '_command', probe)
     options = cli.model_options()
     assert [slug for _, slug in options] == list(CATALOG)
-    assert calls == [['--version'], ['--help'], ['models', '--output-format', 'json']]
+    assert calls == [['--version'], ['--help'], ['--output-format', 'json', 'models']]
     assert all('verify plan access' in label for label, _ in options)
 
 
-@pytest.mark.parametrize('stdout', ['', '   \n', 'model-without-label', '[]', 'null',
-                                  '{"command":{"data":{"models":[]}}}',
-                                  '{"command":{"data":{"models":[{"id":"../custom","label":"x"}]}}}',
-                                  '{"command":{"data":{"models":[{"id":"gemini-pro","label":"x"},{"id":"gemini-pro","label":"duplicate"}]}}}',
-                                  '{"command":{"data":{"models":[{"id":"claude-sonnet-4-6","label":"\u001b[31munsafe"}]}}}',
-                                  '{"command":{"data":{"models":[{"id":"gemini-pro","label":"x","id":"claude-sonnet-4-6"}]}}}'])
+@pytest.mark.parametrize('stdout', [
+    '', '   \n', 'model-without-label', '[]', 'null',
+    '{"status":"SUCCESS","num_turns":0}',
+    catalog_json(status='ERROR'),
+    catalog_json(status='SUCCESS', num_turns=1),
+    catalog_json(status='SUCCESS', num_turns=0.0),
+    catalog_json(command={'name': 'agents', 'data': {'models': [{'id': 'gemini-pro'}]}}),
+    catalog_json(error={'message': 'model catalog failed'}),
+    catalog_json(command={"name": "models"}),
+    catalog_json(command={"name": "models", "data": {}}),
+    catalog_json(command={"name": "models", "data": {"models": "gemini-pro"}}),
+    catalog_json(slugs=()),
+    catalog_json(slugs=('../custom',)),
+    catalog_json(slugs=('gemini-pro', 'gemini-pro')),
+    catalog_json(command={"name": "models", "data": {"models": ["gemini-pro"]}}),
+    catalog_json(command={"name": "models", "data": {"models": [{}]}}),
+    catalog_json(command={"name": "models", "data": {"models": [{"id": 7}]}}),
+    catalog_json(command={"name": "models", "data": {"models": [
+        {"id": "gemini-pro", "label": 7}
+    ]}}),
+    catalog_json(command={"name": "models", "data": {"models": [
+        {"id": "gemini-pro", "label": "x" * 161}
+    ]}}),
+    '{"status":"SUCCESS","num_turns":0,"command":{"name":"models","data":{"models":[{"id":"gemini-pro","label":"x"},{"id":"gemini-pro","label":"duplicate"}]}}}',
+    catalog_json(command={"name": "models", "data": {"models": [
+        {"id": "claude-sonnet-4-6", "label": "\x1b[31munsafe"}
+    ]}}),
+    '{"status":"SUCCESS","num_turns":0,"command":{"name":"models","data":{"models":[{"id":"gemini-pro","label":"x","id":"claude-sonnet-4-6"}]}}}',
+])
 def test_unreadable_or_unsafe_catalog_is_terminal(safe_home, monkeypatch, stdout):
     monkeypatch.setattr(cli, '_command', lambda *a, **k: subprocess.CompletedProcess([], 0, stdout, ''))
     with pytest.raises(SubscriptionError) as exc:
@@ -231,18 +264,18 @@ def test_catalog_never_falls_back_to_human_text(safe_home, monkeypatch):
             'gemini-3.1-pro-high  Gemini 3.1 Pro High', '')))
     with pytest.raises(SubscriptionError, match='malformed JSON model-catalog'):
         cli._catalog_models('/agy')
-    assert calls == [['models', '--output-format', 'json']]
+    assert calls == [['--output-format', 'json', 'models']]
 
 
-def test_cli_build_without_documented_catalog_flag_fails_without_text_fallback(safe_home, monkeypatch):
+def test_global_json_flag_rejection_fails_without_text_fallback(safe_home, monkeypatch):
     calls = []
     monkeypatch.setattr(cli, '_command', lambda exe, args, **kwargs: (
         calls.append(args) or subprocess.CompletedProcess(args, 1, '',
             'Error: flags provided but not defined: -output-format')))
-    with pytest.raises(SubscriptionError, match='does not implement the documented JSON model-list flag') as exc:
+    with pytest.raises(SubscriptionError, match='rejected the global JSON output flag') as exc:
         cli._catalog_models('/agy')
     assert exc.value.kind == 'unsupported_cli'
-    assert calls == [['models', '--output-format', 'json']]
+    assert calls == [['--output-format', 'json', 'models']]
 
 
 @pytest.mark.parametrize('slug', CATALOG + ('future-family-v2.1', 'other_model-3'))
@@ -286,7 +319,7 @@ def test_auth_models_command_runs_catalog_without_inference_or_entitlement_claim
     monkeypatch.setattr(cli, '_command', probe)
     monkeypatch.setattr(cli, '_run_process', lambda *a, **k: pytest.fail('no inference'))
     response = CliRunner().invoke(app, ['models', 'antigravity_cli'])
-    assert response.exit_code == 0 and calls == [['models', '--output-format', 'json']]
+    assert response.exit_code == 0 and calls == [['--output-format', 'json', 'models']]
     assert all(slug in response.stdout for slug in CATALOG)
     assert 'alone does not prove subscription entitlement' in response.stderr
 
@@ -502,14 +535,14 @@ if sys.argv[1:] == ['--version']:
  print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
 if sys.argv[1:] == ['--help']:
  print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
-if sys.argv[1:] == ['models', '--output-format', 'json']:
+if sys.argv[1:] == ['--output-format', 'json', 'models']:
  print(''' + repr(catalog_json()) + '''); sys.exit(0)
 '''
     executable = fake_executable(tmp_path, probes + native_script(input_first=True))
     model = cli.AntigravityCLIChatModel(model_name=slug, executable=executable, max_retries=0, timeout=2)
     assert model.invoke('Supplied evidence').response_metadata['model_name'] == slug
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
-    assert invocations[:3] == [['--version'], ['--help'], ['models', '--output-format', 'json']]
+    assert invocations[:3] == [['--version'], ['--help'], ['--output-format', 'json', 'models']]
     assert len(invocations) == 4 and invocations[3][invocations[3].index('--model') + 1] == slug
 
 
@@ -519,7 +552,7 @@ if sys.argv[1:] == ['--version']:
  print(''' + repr(cli.VERIFIED_VERSION) + '''); sys.exit(0)
 if sys.argv[1:] == ['--help']:
  print(''' + repr('\n'.join(cli.REQUIRED_FLAGS)) + '''); sys.exit(0)
-if sys.argv[1:] == ['models', '--output-format', 'json']:
+if sys.argv[1:] == ['--output-format', 'json', 'models']:
  print(''' + repr(catalog_json(('gemini-3.1-pro-high',))) + '''); sys.exit(0)
 '''
     executable = fake_executable(tmp_path, probes + native_script(input_first=True, init_overrides={'permission_mode': 'request-review'}))
