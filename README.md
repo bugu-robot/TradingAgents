@@ -300,6 +300,10 @@ native structured output and the analysts' sequential tool-call loops.
 CLI 1.2.17. Google authentication/refresh remain owned by Antigravity. This
 **deep-only** adapter implements native JSON Schema with independent validation;
 it does not implement TradingAgents native tool calling.
+The catalog command uses the global flag before the subcommand:
+`agy --output-format json models`. Antigravity CLI 1.3.0 was reported as a newer
+stable release after the previous review but has not been adapter-reviewed; the
+pin remains 1.2.17 until a separate compatibility review after live acceptance.
 
 Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
 `deep_think_provider="antigravity_cli"`, or ChatGPT Plan for both tiers. The
@@ -309,8 +313,8 @@ environment and uses a scoped zero-tool agent. The official CLI owns cached
 authentication; init and terminal SUCCESS are validated before accepting output.
 
 Select Quick and Deep models independently: ChatGPT models come from its signed-in
-account catalog, and Antigravity models come from the non-inference `agy models`
-command. Gemini, Claude and other safely named catalog families are selectable;
+account catalog, and Antigravity models come from the non-inference
+`agy --output-format json models` command. Gemini, Claude and other safely named catalog families are selectable;
 unlisted/custom model IDs and silent model/API fallback are rejected. Antigravity
 effort supports low, medium and high. Catalog availability changes and does not
 prove entitlement. **Live acceptance remains pending:** verify cached execution,

@@ -19,6 +19,10 @@ ChatGPT Plan for both tiers also works at the adapter level. Antigravity quick
 is rejected before authentication or inference. The former Gemini CLI
 subscription adapter has been removed; the upstream `google` Gemini API provider
 is unchanged. API providers remain explicitly available and bill as before.
+The catalog command is `agy --output-format json models`; `--output-format` is
+a global flag and precedes the subcommand. The newer stable CLI 1.3.0 was
+reported after the previous review but is not adapter-reviewed; keep 1.2.17
+pinned through live acceptance and review 1.3.0 separately afterward.
 
 ## ChatGPT Plan
 
@@ -60,7 +64,8 @@ Antigravity owns Google OAuth, keyring storage and refresh. Use the official
 interactive `agy` sign-in; over SSH, open its authorization URL in a local
 browser, then paste the browser's code back into the SSH CLI. TradingAgents never
 reads, copies or implements Google tokens. Public `agy` headless, stream-json,
-model, effort and JSON Schema interfaces are the only transport.
+model, effort and JSON Schema interfaces are the only transport. The adapter
+pins reviewed CLI 1.2.17; newer stable 1.3.0 is not yet compatibility-reviewed.
 
 ```bash
 tradingagents auth status antigravity_cli
@@ -69,7 +74,7 @@ tradingagents auth models antigravity_cli
 
 Status checks real global configuration and the reviewed executable; it does not
 claim to verify Google login, plan or quota. Catalog discovery separately executes
-official `agy models`, without any model turn. Actual headless requests use the
+official `agy --output-format json models`, without any model turn. Actual headless requests use the
 CLI's cached credentials and documented auth/error/status behavior. No separate
 Pro-attestation endpoint, model-authored identity probe or token reading is used.
 Record official interactive `/usage` plan/quota after smoke requests for acceptance.
@@ -110,7 +115,7 @@ config.update({
     "quick_think_provider": "chatgpt_plan",
     "quick_think_llm": "<slug from ChatGPT account catalog>",
     "deep_think_provider": "antigravity_cli",
-    "deep_think_llm": "<safe catalog slug from agy models>",
+    "deep_think_llm": "<safe catalog slug from agy --output-format json models>",
     "backend_url": None,
     "quick_think_backend_url": None,
     "deep_think_backend_url": None,
@@ -130,8 +135,9 @@ output-token caps. A centralized registry admits capabilities; no hybrid router
 or scattered agent-name conditionals are needed.
 
 Quick and Deep selections are independent. ChatGPT model choices use the signed-in
-account catalog; Antigravity choices use `agy models`, including Gemini, Claude
-and other returned families. Subscription menus offer no arbitrary custom API ID.
+account catalog; Antigravity choices use `agy --output-format json models`,
+including Gemini, Claude and other returned families. Subscription menus offer
+no arbitrary custom API ID.
 Conservative safe syntax and fresh Antigravity catalog membership are required
 before each inference; the exact selected slug is passed using `--model`. Unknown
 or unavailable models fail without switching. Availability can change and is not
