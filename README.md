@@ -291,6 +291,26 @@ A tier on its own provider uses that provider's key and default endpoint; set `q
 
 See `tradingagents/default_config.py` for all configuration options.
 
+### Subscription-backed providers (this fork)
+
+`chatgpt_plan` uses the officially documented **Sign in with ChatGPT** plan-use
+authorization and public Responses API, without `OPENAI_API_KEY`. It supports
+native structured output and the analysts' sequential tool-call loops.
+`gemini_cli` uses **Sign in with Google** and cached personal-account authentication
+in the verified Gemini CLI 0.62.0, including eligible Google AI Pro accounts.
+It is a text adapter for the **deep tier only**; CLI JSON does not supply native
+tool calls or JSON-schema output.
+
+Use v0.6.0's existing tier settings: `quick_think_provider="chatgpt_plan"` and
+`deep_think_provider="gemini_cli"`. Subscription model availability and allowance
+come from the signed-in accounts. Google CLI credit overage is disabled; no
+automatic switch to an API provider is made when allowance runs out.
+
+See [subscription providers](docs/subscription-providers.md) for authentication,
+supported combinations, limitations, offline evidence, and the consolidated
+Ubuntu sign-in, live smoke tests and full AAPL verification. Existing API
+providers remain available. Live account entitlement has not been verified yet.
+
 ### Fundamentals as filed
 
 US company statements come from SEC EDGAR, which records the date every figure was filed. A run dated in the past reads the statements exactly as they stood that day: a fiscal year that has ended but has not been filed yet is not served, and a figure restated later still reads as first reported. Apple's 2008 total assets were filed as $39.6B and restated to $36.2B in 2010, so a run dated in between reads $39.6B. EDGAR needs no account or API key.

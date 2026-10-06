@@ -57,6 +57,8 @@ References (official, accessed 2026-10-05):
 - https://geminicli.com/docs/get-started/authentication/
 - https://geminicli.com/docs/cli/headless/
 - https://geminicli.com/docs/resources/quota-and-pricing/
+- https://geminicli.com/docs/reference/configuration/
+- https://geminicli.com/docs/cli/system-prompt/
 
 ## Historical PR #1195
 
@@ -75,3 +77,17 @@ Every meaningful phase is tested and saved on the feature branch. Existing API
 providers and graph execution remain intact. No upstream writes or PR merges.
 Live OAuth, entitlement and AAPL verification are opt-in and consolidated after
 offline development; mocked transport tests are not evidence of live entitlement.
+
+Final offline CLI verification (2026-10-06): installed official
+`@google/gemini-cli@0.62.0`; ran its real version/help probes without inference.
+Loaded its actual settings implementation with a temporary home containing
+conflicting API auth, shell-tool, hook and credit-overage preferences. With the
+documented `--skip-trust` behavior, the isolated workspace correctly selects
+`oauth-personal`, has an empty core-tool list, disables hooks/agents/skills and
+sets `billing.overageStrategy=never`. Local `admin.*` fields are overwritten by
+remote admin defaults in 0.62.0, so they cannot disable MCP/extensions. The
+adapter instead uses documented `--extensions none` and a nonempty allowlist
+containing only its unique, unconfigured temporary workspace name; native MCP
+discovery rejects every other server. An empty MCP allowlist would allow all
+servers and is deliberately avoided. No real credentials or model quota were
+used in this verification.
