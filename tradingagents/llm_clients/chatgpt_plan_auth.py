@@ -14,6 +14,7 @@ import math
 import os
 import re
 import secrets
+import stat
 import tempfile
 import time
 import uuid
@@ -25,6 +26,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import requests
 
 from .subscription_errors import SubscriptionError, response_error
+from .subscription_json import json_object
 
 AUTH_ORIGIN = "https://auth.openai.com"
 AUTHORIZE_URL = f"{AUTH_ORIGIN}/api/accounts/authorize"
@@ -49,23 +51,43 @@ def _has_plan_permission(scopes) -> bool:
 
 
 def _read_json(path: Path) -> dict:
+    _protected_directory(path.parent)
     if path.is_symlink():
         raise _auth_error("Subscription credential files must not be symbolic links.")
-    if os.name != "nt" and path.exists() and path.stat().st_mode & 0o077:
-        raise _auth_error("Credential file permissions must be owner-only (chmod 600).")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            info = os.fstat(handle.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024
+                    or (os.name != "nt" and (info.st_mode & 0o077 or info.st_uid != os.getuid()))):
+                raise _auth_error("Credential file ownership/permissions must be owner-only (chmod 600).")
+            value = json_object(handle.read(1024 * 1024 + 1))
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):
-        raise _auth_error("Cannot read subscription credentials; run tradingagents auth login chatgpt_plan.") from None
+        raise _auth_error("Subscription credential data is invalid or unreadable; run tradingagents auth login chatgpt_plan.") from None
     if not isinstance(value, dict):
         raise _auth_error("Subscription credential record must be a JSON object.")
     return value
 
 
+def _protected_directory(path: Path, *, create: bool = False) -> None:
+    try:
+        if create:
+            path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if path.is_symlink():
+            raise _auth_error("Subscription storage directories must not be symbolic links.")
+        if path.exists():
+            info = path.stat()
+            if (not stat.S_ISDIR(info.st_mode)
+                    or (os.name != "nt" and (info.st_mode & 0o077 or info.st_uid != os.getuid()))):
+                raise _auth_error("Subscription storage ownership/permissions must be owner-only (chmod 700).")
+    except OSError:
+        raise _auth_error("Cannot access protected subscription storage.") from None
+
+
 def _write_json(path: Path, value: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _protected_directory(path.parent, create=True)
     fd, temporary = tempfile.mkstemp(prefix=".credentials-", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -81,8 +103,18 @@ def _write_json(path: Path, value: dict) -> None:
 @contextlib.contextmanager
 def _file_lock(path: Path):
     """Serialize rotating-token reads/writes across threads and processes."""
-    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    _protected_directory(path.parent)
+    if path.is_symlink():
+        raise _auth_error("Subscription rotation locks must not be symbolic links.")
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except OSError:
+        raise _auth_error("Cannot safely open subscription rotation lock.") from None
     with os.fdopen(fd, "r+b") as handle:
+        info = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(info.st_mode)
+                or (os.name != "nt" and (info.st_mode & 0o077 or info.st_uid != os.getuid()))):
+            raise _auth_error("Subscription lock ownership/permissions must be owner-only.")
         if os.name == "nt":
             import msvcrt
             handle.write(b"\0")
@@ -130,9 +162,7 @@ class ChatGPTAuthStore:
         return _read_json(self.directory / "active.json").get("profile", "default")
 
     def _prepare_directory(self):
-        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if os.name != "nt":
-            self.directory.chmod(0o700)
+        _protected_directory(self.directory, create=True)
 
     @contextlib.contextmanager
     def locked(self):

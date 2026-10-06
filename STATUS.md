@@ -5,7 +5,7 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 - Fork: `bugu-robot/TradingAgents`; upstream: `TauricResearch/TradingAgents`.
 - Baseline: TradingAgents **v0.6.0**, `1394a3f72aa4393e1a98f51b382434c4b4c2d972`.
 - Branch: `feat/subscription-providers`; [Draft PR #1](https://github.com/bugu-robot/TradingAgents/pull/1), unmerged.
-- Latest published checkpoint before this update: `4009df8ea2107f62b940d334874081e7123b2bb1`.
+- Latest published checkpoint before this update: `ed7a3f9687c08e70a8c0f1d53c8fffe328cc8490`.
   Resolve the current tip with `git rev-parse origin/feat/subscription-providers`.
 - Phase 0: fetched both remotes, confirmed clean worktree and baseline; no work discarded.
 - Phase 1: official documentation rechecked; official Linux `agy` **1.2.17**
@@ -21,9 +21,14 @@ Updated: 2026-10-06. **Draft; do not merge. Not production accepted.**
 - Registry/model catalog/CLI/auth/examples now use `antigravity_cli`, with
   centralized deep-only admission and effort configuration. Gemini CLI adapter
   and subscription tests removed; existing `google` API client preserved.
-- Relevant migration tests: **192 offline passed** (175 Antigravity + 17 routing).
+- Focused review fixes passed **346 subscription offline tests**, including
+  Antigravity, ChatGPT auth/transport/tools and centralized routing.
   Six opt-in LIVE cases replace the previous four; all remain skipped by default.
-- Full final regression and focused security/code review pending.
+- Focused review A1–A7 corrected: process/probe cleanup, no external schema
+  resolution, strict JSON, storage/lock ownership, terminal schema failures,
+  safe exit classification and action metadata. No open P1/P2 code finding.
+- Full final regression, additional deep-manager coverage and final verification
+  command documentation pending.
 - Last completed regression before migration: 1,440 passed, 5 integration tests
   deselected, 20 existing warnings; 177 subscription offline tests. These counts
   apply to the old checkpoint, not the pending Antigravity implementation.

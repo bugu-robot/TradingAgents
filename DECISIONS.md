@@ -84,3 +84,12 @@ Pydantic alone does not prove the CLI respected the generated JSON Schema.
 Require the echoed schema, a complete structured object and matching response
 JSON. Native schema/auth/quota failures are terminal SubscriptionError values;
 upstream managers must not issue another request through free-text fallback.
+
+## 2026-10-06 — Treat malformed native protocol/schema as terminal
+
+Focused review identified ambiguous JSON, external schema scope/reference paths
+and coercive ChatGPT parsing that could escape the subscription error boundary.
+Use strict shared JSON, no-fetch schema validation and terminal safe errors for
+both transports. Informational probes need the same bounds/group cleanup as
+model processes. Protect app storage and locks without modifying unrelated paths;
+these are security corrections, not a change to the official OAuth protocol.

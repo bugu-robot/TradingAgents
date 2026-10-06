@@ -123,6 +123,46 @@ def test_host_id_stable_and_file_permissions_owner_only(store):
         store.read()
 
 
+def test_storage_symlink_is_rejected_without_changing_target(tmp_path, monkeypatch):
+    target = tmp_path / "target"
+    target.mkdir(mode=0o755)
+    link = tmp_path / "linked-auth"
+    link.symlink_to(target, target_is_directory=True)
+    monkeypatch.setenv("TRADINGAGENTS_CHATGPT_AUTH_DIR", str(link))
+    with pytest.raises(SubscriptionError, match="symbolic"):
+        auth.ChatGPTAuthStore().host_id()
+    assert target.stat().st_mode & 0o777 == 0o755 and list(target.iterdir()) == []
+
+
+def test_rotation_lock_symlink_cannot_modify_another_file(store, tmp_path):
+    connect(store)
+    target = tmp_path / "untouched"
+    target.write_text("sentinel")
+    (store.directory / (store.profile + ".lock")).symlink_to(target)
+    with pytest.raises(SubscriptionError, match="symbolic"):
+        store.access_token()
+    assert target.read_text() == "sentinel"
+
+
+def test_shared_storage_directory_is_rejected_before_token_write(store):
+    connect(store)
+    before = store.path.read_bytes()
+    store.directory.chmod(0o755)
+    with pytest.raises(SubscriptionError, match="permissions"):
+        store.logout()
+    assert store.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("raw", ['{"access_token":"a","access_token":"b"}',
+                                 '{"expires_at":NaN}', '{"expires_at":1e999}'])
+def test_ambiguous_credential_json_has_no_token_request(store, raw, monkeypatch):
+    connect(store)
+    store.path.write_text(raw)
+    monkeypatch.setattr(auth.requests, "post", lambda *a, **k: pytest.fail("no token request"))
+    with pytest.raises(SubscriptionError):
+        store.access_token()
+
+
 def test_concurrent_refresh_rotates_once_and_preserves_registration(store, monkeypatch):
     connect(store, expires_at=0)
     posted = []

@@ -118,6 +118,22 @@ def test_include_raw_reports_parse_failure(model, posted):
     assert result["raw"].content == "not-json"
 
 
+@pytest.mark.parametrize("text", ['not-json', '{"action":1,"evidence":"secret-input"}',
+                                 '{"action":"Hold"}',
+                                 '{"action":"Hold","action":"Buy","evidence":"x"}',
+                                 '{"action":"Hold","evidence":"x","extra":1}'])
+def test_native_schema_failure_is_terminal_without_freetext_retry(model, posted, text):
+    from tradingagents.agents.structured import invoke_structured_or_freetext
+
+    calls, outputs = posted
+    outputs.append(Response([completed(text)]))
+    with pytest.raises(SubscriptionError) as exc:
+        invoke_structured_or_freetext(model.with_structured_output(Decision), model,
+                                     "decide", lambda x: x.action, "Research Manager")
+    assert exc.value.kind == "malformed_output" and len(calls) == 1
+    assert "secret-input" not in str(exc.value)
+
+
 @pytest.mark.parametrize("setting", ["temperature", "max_tokens"])
 def test_unsupported_route_settings_fail_before_network(setting):
     with pytest.raises(ValueError, match=setting):

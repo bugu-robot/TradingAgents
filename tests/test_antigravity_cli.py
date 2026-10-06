@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 from langchain_core.messages import AIMessage, ChatMessage, HumanMessage, SystemMessage, ToolMessage
@@ -477,3 +478,116 @@ def test_schema_and_prompt_are_arguments_without_shell_interpolation(model, monk
         return result('{"marker":"safe"}', structured_output={'marker':'safe'}, json_schema=schema)
     monkeypatch.setattr(cli, '_run_process', run)
     assert model.with_structured_output(Unusual).invoke('schema').marker == 'safe'
+
+
+@pytest.mark.parametrize('key,value', [('$ref', 'https://remote.invalid/schema'),
+                                      ('$dynamicRef', 'https://remote.invalid/schema'),
+                                      ('$id', 'https://remote.invalid/'),
+                                      ('$schema', 'https://remote.invalid/dialect')])
+def test_external_schema_resources_fail_before_any_process(model, monkeypatch, key, value):
+    schema = {'type': 'object', 'properties': {'field': {key: value}}}
+    monkeypatch.setattr(cli, 'preflight', lambda *a: pytest.fail('no CLI preflight for invalid schema'))
+    with pytest.raises(SubscriptionError) as exc:
+        model.bind(native_schema=schema).invoke('blocked')
+    assert exc.value.kind == 'capability' and 'remote.invalid' not in str(exc.value)
+
+
+def test_unresolved_local_schema_reference_is_terminal_without_network():
+    schema = {'type': 'object', 'properties': {'field': {'$ref': '#/$defs/missing'}}}
+    body = result('{"field":"secret"}', structured_output={'field': 'secret'}, json_schema=schema)
+    with pytest.raises(SubscriptionError) as exc:
+        cli._parse_result(body, schema)
+    assert exc.value.kind == 'malformed_output' and 'secret' not in str(exc.value)
+
+
+@pytest.mark.parametrize('field', ['toolInfo', 'mcpServers', 'plugin_info', 'skills', 'subagents', 'commandExecution'])
+def test_new_action_metadata_spellings_are_rejected(field):
+    s = initialized()
+    with pytest.raises(SubscriptionError) as exc:
+        feed(s, 'result', result(**{field: ['unexpected action']}))
+    assert exc.value.kind == 'capability'
+
+
+def test_structured_data_property_names_are_not_execution_metadata():
+    data = {'commands': ['hold'], 'tool_calls': 'evidence', 'plugins': ['portfolio category']}
+    schema = {'type': 'object', 'properties': {k: {} for k in data}}
+    body = result(json.dumps(data), structured_output=data, json_schema=schema)
+    assert cli._parse_result(body, schema)['structured_output'] == data
+
+
+@pytest.mark.parametrize('raw', [b'{"number":1e999}', b'{"nested":{"value":NaN}}'])
+def test_overflow_and_nonfinite_json_are_rejected(raw):
+    with pytest.raises(ValueError):
+        cli._json_object(raw.decode())
+
+
+@pytest.mark.parametrize('directory', ['.gemini', '.gemini/antigravity-cli'])
+def test_writable_settings_ancestors_fail_before_any_child(safe_home, directory, monkeypatch):
+    (safe_home.parents[2] / directory).chmod(0o777)
+    monkeypatch.setattr(subprocess, 'Popen', lambda *a, **k: pytest.fail('no CLI startup'))
+    with pytest.raises(SubscriptionError):
+        cli.preflight()
+
+
+def test_probe_output_is_bounded_and_child_reaped(tmp_path):
+    pidfile = tmp_path / 'probe-pid'
+    exe = fake_executable(tmp_path, 'import os,sys\nopen('+repr(str(pidfile))+', "w").write(str(os.getpid()))\nsys.stdout.write("x"*2000000)\n')
+    with pytest.raises(SubscriptionError):
+        cli._command(exe, ['--help'])
+    assert not cli.Path('/proc/'+pidfile.read_text()).exists()
+
+
+def test_probe_timeout_kills_descendant_retaining_output(tmp_path):
+    childfile = tmp_path / 'descendant-pid'
+    exe = fake_executable(tmp_path, 'import os,time\nchild=os.fork()\nif child == 0:\n open('+repr(str(childfile))+', "w").write(str(os.getpid()))\n time.sleep(30)\nelse:\n os._exit(0)\n')
+    with pytest.raises(SubscriptionError):
+        cli._command(exe, ['--version'], timeout=.3)
+    state = cli.Path('/proc/'+childfile.read_text()+'/stat')
+    for _ in range(100):
+        if not state.exists() or state.read_text().split()[2] == 'Z':
+            break
+        time.sleep(.01)
+    assert not state.exists() or state.read_text().split()[2] == 'Z'
+
+
+def test_probe_cancellation_kills_and_reaps_child(tmp_path):
+    pidfile = tmp_path / 'cancel-probe-pid'
+    exe = fake_executable(tmp_path, 'import os,time\nopen('+repr(str(pidfile))+', "w").write(str(os.getpid()))\ntime.sleep(30)\n')
+    cancel = threading.Event()
+    timer = threading.Timer(.15, cancel.set)
+    timer.start()
+    try:
+        with pytest.raises(SubscriptionError) as exc:
+            cli._command(exe, ['--help'], cancellation=cancel)
+        assert exc.value.kind == 'cancelled'
+    finally:
+        timer.cancel()
+    assert not cli.Path('/proc/'+pidfile.read_text()).exists()
+
+
+def test_nonzero_exit_before_init_retains_safe_auth_classification(model, tmp_path, monkeypatch):
+    exe = fake_executable(tmp_path, 'import sys\nsys.stderr.write("authentication required opaque-secret")\nsys.exit(1)\n')
+    monkeypatch.setattr(cli, 'preflight', lambda *a: (exe, cli.VERIFIED_VERSION))
+    with pytest.raises(SubscriptionError) as exc:
+        model.invoke('unused')
+    assert exc.value.kind == 'auth' and 'opaque-secret' not in str(exc.value)
+
+
+def test_closed_output_pipes_still_allow_cancellation_and_cleanup(tmp_path):
+    pidfile = tmp_path / 'closed-pipes-pid'
+    exe = fake_executable(tmp_path, 'import os,time\nopen('+repr(str(pidfile))+', "w").write(str(os.getpid()))\nos.close(1)\nos.close(2)\ntime.sleep(30)\n')
+    cancel = threading.Event()
+    timer = threading.Timer(.15, cancel.set)
+    timer.start()
+    try:
+        with pytest.raises(SubscriptionError) as exc:
+            cli._command(exe, ['--help'], cancellation=cancel)
+        assert exc.value.kind == 'cancelled'
+    finally:
+        timer.cancel()
+    assert not cli.Path('/proc/'+pidfile.read_text()).exists()
+
+
+def test_extremely_nested_json_is_a_safe_protocol_error():
+    with pytest.raises(ValueError):
+        cli._json_object('{"value":' + '[' * 2000 + '1' + ']' * 2000 + '}')

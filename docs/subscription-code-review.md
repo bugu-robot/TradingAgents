@@ -1,5 +1,10 @@
 # Subscription provider code review — 2026-10-06
 
+The first section below is the **historical pre-migration review**. Its Gemini
+CLI implementation/counts are superseded by the Antigravity migration review at
+the end of this file. Current evidence and acceptance gates are in STATUS.md and
+VERIFICATION.md.
+
 Reviewed the feature at `52d255f49eb2d648bdf328c12fce59b44954e6a3`, based on
 TradingAgents v0.6.0 (`1394a3f72aa4393e1a98f51b382434c4b4c2d972`). Scope included
 OAuth registration/identity/rotation/revocation, credential diagnostics, Responses
@@ -31,7 +36,7 @@ providers and upstream graph routing remain intact.
   UTF-8 decoding and real LangGraph ToolNode execution, alongside mocked service
   admission/refresh responses.
 - Ruff and `git diff --check` pass.
-- Four opt-in subscription live checks still skip by default. No real OAuth
+- Four opt-in subscription live checks skipped at that historical checkpoint. No real OAuth
   login, model request, subscription quota or AWS service was used for review.
 
 The offline Bedrock construction test uses dummy AWS credentials and disables
@@ -49,14 +54,57 @@ OAuth/Responses tests do not establish the user's ChatGPT plan entitlement.
 
 ChatGPT account consent/preview eligibility, Google AI Pro cached sign-in and
 quota, live structured/tool continuation and the full AAPL run remain pending
-the single [Ubuntu verification session](subscription-providers.md#one-consolidated-ubuntu-verification-session).
-Gemini CLI remains deep-only with the existing free-text fallback; no native
-tool-call or constrained-schema capability is claimed. Subscription quota
-exhaustion never causes an automatic switch to API billing. Future unverified
-Gemini CLI minor versions are rejected. The PR remains Draft and unmerged.
+the single [Ubuntu verification session](../VERIFICATION.md). The historical
+Gemini adapter has since been removed. Current Antigravity native-schema status
+and compatibility blockers are recorded below. The PR remains Draft and unmerged.
 
 Official protocol sources rechecked:
 
 - [OpenAI registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
 - [OpenAI accounts, refresh and revocation](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)
 - [OpenAI preview transport requirements](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
+
+## Antigravity migration review — 2026-10-06
+
+Reviewed `ed7a3f9687c08e70a8c0f1d53c8fffe328cc8490` and the subsequent corrections
+on the existing feature branch. The official Linux 1.2.17 CLI version/help and
+release checksum were inspected without Google tokens or model requests.
+OpenAI registration/sign-in and self-hosted VM guidance were rechecked before
+changing credential storage. Existing OAuth protocol, endpoints and grant scopes
+are retained; changes address demonstrated storage/protocol/schema issues.
+
+| ID | Severity | Finding | Fix and offline evidence |
+| --- | --- | --- | --- |
+| A1 | P2 | Informational CLI probes used unbounded capture and killed only the leader on timeout, leaving language-server descendants or inherited pipes alive. | Bounded nonblocking capture, deadlines, cancellation, group termination and reaping for probes and inference. Fake executable tests cover excess output, descendants retaining pipes, closed pipes, timeout and cancellation. |
+| A2 | P2 | Checking only `$ref` misses external `$dynamicRef` and `$id` resource scopes; unresolved schema references can escape as a generic exception and trigger upstream free-text fallback. Direct `bind(native_schema=...)` also bypasses binding validation. | Validate schemas again before any process; reject external references, resource IDs and unreviewed dialects. Explicit no-fetch referencing registry; safe terminal SubscriptionError on resolution/schema failure. Tests assert no preflight/inference/download for external resources. |
+| A3 | P2 | JSON permits duplicate keys and float overflow despite rejecting literal NaN; ChatGPT function arguments could expose ambiguous values to ToolNode. Deep nesting can escape parser handling. | Shared strict object loader rejects duplicates, nonfinite numbers/overflow and excessive nesting for CLI, SSE, credentials and function arguments. Tests prove one model response is rejected before tool execution or refresh. |
+| A4 | P2 | OAuth storage prepares symlinked directories and opens symlinked rotation locks; file ownership/type checks were incomplete. Antigravity settings ancestors could be writable by other users. | Protected directory/file ownership and regular-file checks, owner-only OAuth directories, no-follow bounded credential reads and no-follow locks. Antigravity checks real config ancestors. Regressions prove unrelated sentinel files/settings and target permissions remain unchanged. |
+| A5 | P2 | ChatGPT malformed/coercible structured values could be accepted by Pydantic or escape as ValueError, causing an extra plain request. | Strict JSON, independent JSON Schema validation with a no-fetch registry, strict Pydantic JSON validation and terminal redacted SubscriptionError. Five malformed/schema cases prove exactly one request and no free-text fallback. Explicit include_raw retains safe parsing_error behavior. |
+| A6 | P2 | Nonzero CLI exits before init lost auth classification; cancellation after output pipes closed could wait until the long request deadline. | Classify nonzero exit diagnostics safely; poll cancellation/deadline while waiting for exit. Regressions confirm auth classification without raw-secret leakage and child reaping after closed pipes. |
+| A7 | P2 | Action metadata recognition missed camelCase/plugin/skill spellings and confused structured property names with execution metadata. | Normalize reviewed metadata keys and reject all action namespaces; schema/structured-value payloads remain data. Tests cover MCP/plugins/subagents/commands and harmless structured fields named commands/tool_calls. |
+
+All A1–A7 are corrected before live verification. No unresolved P1/P2 code finding
+is accepted. OAuth state, nonce, S256 PKCE, signature/issuer/audience/expiry and
+returning-subject validation, exact redirect handling, atomic refresh rotation,
+credential redaction, cross-turn tool IDs and terminal UTF-8 SSE handling were
+reviewed with existing regressions. Credential diagnostics never expose raw CLI
+text. Google credentials remain entirely CLI-owned.
+
+Antigravity subscription isolation was reviewed across actual global settings,
+API/Vertex/ADC/service-account/custom endpoints, credit overage, environment
+contamination, shared customization/policy, private workspace permissions,
+file/command/URL denial, MCP/plugins/skills/subagents, strict init, action
+metadata, JSON Schema, terminal failure, bounded retries and process cleanup.
+No global settings or administrator policy are automatically overwritten or
+hidden. Current test evidence: **346 subscription offline cases passed**; final
+whole-repository regression is pending at this checkpoint. Six live cases skip
+by default. Skips are not passes.
+
+Two **acceptance/official-interface blockers**, separate from corrected code
+findings, remain: official headless docs do not promise the Pro identity field
+or init-before-input ordering required for safe admission. The adapter fails
+before inference if these cannot be established. Prompt instructions and mock
+metadata are not proof of sandboxing, entitlement or billing. Actual CLI startup
+still owns its internal configuration/keyring/log files; the zero-tool boundary
+constrains model actions. A future CLI version requires another review. No live
+subscription use or full AAPL run has been claimed; Draft PR #1 stays unmerged.

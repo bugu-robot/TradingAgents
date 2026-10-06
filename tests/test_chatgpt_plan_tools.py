@@ -85,6 +85,16 @@ def test_duplicate_response_call_ids_are_rejected(model, posted):
         model.bind_tools([stock_price]).invoke("fetch")
 
 
+@pytest.mark.parametrize("arguments", ['{"symbol":"AAPL","symbol":"MSFT"}',
+                                       '{"symbol":NaN}', '{"symbol":Infinity}', '{"symbol":1e999}'])
+def test_ambiguous_tool_json_is_rejected_before_execution(model, posted, arguments):
+    calls, outputs = posted
+    outputs.append(Response([completed(output=[function(arguments=arguments)])]))
+    with pytest.raises(SubscriptionError) as exc:
+        model.bind_tools([stock_price]).invoke("fetch")
+    assert exc.value.kind == "malformed_output" and len(calls) == 1
+
+
 def test_reused_call_id_is_rejected_before_a_second_market_tool_execution(model, posted, monkeypatch):
     import tradingagents.agents.tools as tools_module
 

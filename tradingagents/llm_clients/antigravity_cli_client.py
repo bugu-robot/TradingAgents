@@ -14,6 +14,7 @@ import re
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -29,10 +30,13 @@ from langchain_core.messages import AIMessage, ChatMessage, HumanMessage, System
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field, ValidationError
+from referencing import Registry
+from referencing.exceptions import Unresolvable
 
 from .base_client import BaseLLMClient
 from .chatgpt_plan_client import _text
 from .subscription_errors import SubscriptionError
+from .subscription_json import json_object as _json_object
 
 VERIFIED_VERSION = "1.2.17"
 REQUIRED_FLAGS = (
@@ -75,27 +79,13 @@ def _child_environment() -> dict[str, str]:
     return env
 
 
-def _json_object(text: str) -> dict:
-    """Strict JSON: duplicate keys and NaN/Infinity are protocol failures."""
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise ValueError("duplicate key")
-            result[key] = value
-        return result
-
-    def constant(_):
-        raise ValueError("nonfinite JSON number")
-
-    result = json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
-    if not isinstance(result, dict):
-        raise ValueError("expected JSON object")
-    return result
-
-
 def _read_settings(path: Path) -> dict:
     try:
+        for directory in (path.parent, path.parent.parent):
+            info = directory.lstat()
+            if (not stat.S_ISDIR(info.st_mode) or directory.is_symlink()
+                    or (os.name == "posix" and (info.st_mode & 0o022 or info.st_uid != os.getuid()))):
+                raise ValueError("untrusted settings directory")
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024 * 1024:
             raise ValueError("untrusted settings")
         # Reject writable config; another user must not be able to redirect an
@@ -189,38 +179,72 @@ def _diagnostic_error(stdout: str, stderr: str, code: int) -> SubscriptionError:
     return SubscriptionError(message, kind=kind, details={"exit_code": code})
 
 
-def _command(executable: str, args: list[str], *, timeout: float = 15) -> subprocess.CompletedProcess:
+def _command(executable: str, args: list[str], *, timeout: float = 15,
+             cancellation: threading.Event | None = None) -> subprocess.CompletedProcess:
+    """Bound informational probes too, including any language-server children."""
+    if cancellation is not None and cancellation.is_set():
+        raise _failure("Antigravity preflight cancelled before startup.", "cancelled")
     try:
         with tempfile.TemporaryDirectory(prefix="tradingagents-agy-probe-") as cwd:
-            return subprocess.run([executable, *args], stdin=subprocess.DEVNULL, capture_output=True,
-                                  text=True, encoding="utf-8", errors="strict", timeout=timeout,
-                                  env=_child_environment(), cwd=cwd, check=False)
-    except (OSError, subprocess.TimeoutExpired, UnicodeError):
+            command = [executable, *args]
+            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, env=_child_environment(), cwd=cwd,
+                                       start_new_session=True)
+            deadline, received, buffers = time.monotonic() + timeout, 0, {"stdout": bytearray(), "stderr": bytearray()}
+            try:
+                with selectors.DefaultSelector() as selector:
+                    for channel in buffers:
+                        pipe = getattr(process, channel)
+                        os.set_blocking(pipe.fileno(), False)
+                        selector.register(pipe, selectors.EVENT_READ, channel)
+                    while selector.get_map():
+                        if cancellation is not None and cancellation.is_set():
+                            raise _failure("Antigravity preflight cancelled.", "cancelled")
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        for key, _ in selector.select(min(remaining, .1)):
+                            chunk = os.read(key.fileobj.fileno(), 65536)
+                            if not chunk:
+                                selector.unregister(key.fileobj)
+                                continue
+                            received += len(chunk)
+                            if received > 1024 * 1024:
+                                raise ValueError("Probe output limit exceeded")
+                            buffers[key.data].extend(chunk)
+                code = _wait_for_exit(process, deadline, cancellation)
+                return subprocess.CompletedProcess(command, code,
+                    buffers["stdout"].decode("utf-8"), buffers["stderr"].decode("utf-8"))
+            finally:
+                _terminate(process)
+                process.stdout.close()
+                process.stderr.close()
+    except (OSError, subprocess.TimeoutExpired, ValueError):
         raise _failure("Antigravity CLI probe timed out or could not start/decode. No inference was requested.") from None
 
 
-def detect_cli(executable: str | None = None) -> tuple[str, str]:
+def detect_cli(executable: str | None = None, cancellation: threading.Event | None = None) -> tuple[str, str]:
     requested = executable or os.environ.get("TRADINGAGENTS_ANTIGRAVITY_CLI_BIN") or "agy"
     resolved = shutil.which(requested)
     if not resolved:
         raise _failure("Install the verified official Antigravity CLI 1.2.17 and put agy on PATH.")
-    version = _command(resolved, ["--version"])
+    version = _command(resolved, ["--version"], cancellation=cancellation)
     if version.returncode or version.stdout.strip() != VERIFIED_VERSION:
         raise _failure("antigravity_cli requires the reviewed official CLI version 1.2.17. Unverified versions are refused.")
-    help_ = _command(resolved, ["--help"])
+    help_ = _command(resolved, ["--help"], cancellation=cancellation)
     if help_.returncode or not all(re.search(r"(?<![\w-])" + re.escape(flag) + r"(?![\w-])", help_.stdout) for flag in REQUIRED_FLAGS):
         raise _failure("Antigravity CLI is missing required public headless/isolation/schema flags.")
     return resolved, VERIFIED_VERSION
 
 
-def preflight(executable: str | None = None) -> tuple[str, str]:
+def preflight(executable: str | None = None, cancellation: threading.Event | None = None) -> tuple[str, str]:
     _configuration_preflight()
-    cli = detect_cli(executable)
-    _authentication_preflight(cli[0])
+    cli = detect_cli(executable, cancellation)
+    _authentication_preflight(cli[0], cancellation)
     return cli
 
 
-def _authentication_preflight(executable: str) -> None:
+def _authentication_preflight(executable: str, cancellation: threading.Event | None = None) -> None:
     """Require positive CLI-owned personal Pro identification before inference.
 
     Official docs expose credential identity in /help, but do not promise a
@@ -228,7 +252,8 @@ def _authentication_preflight(executable: str) -> None:
     this adapter remains blocked rather than trust a user-written attestation
     or read Google token storage. Live verification must resolve this boundary.
     """
-    result = _command(executable, ["--print", "/help", "--output-format", "json", "--print-timeout", "15s"], timeout=20)
+    result = _command(executable, ["--print", "/help", "--output-format", "json", "--print-timeout", "15s"], timeout=20,
+                      cancellation=cancellation)
     if result.returncode:
         raise _diagnostic_error(result.stdout, result.stderr, result.returncode)
     report = result.stdout
@@ -314,8 +339,15 @@ def _agent_file(root: Path, system: str) -> str:
 
 def _side_effect_metadata(body: dict) -> bool:
     for key, value in body.items():
-        if key in {"tool_info", "tool_name", "subagent_info", "tool_calls", "commands",
-                   "mcp_calls", "plugin_calls", "skill_calls", "agent_calls", "side_effects"} and value:
+        # Schema/property names and model-authored structured data are payload,
+        # not execution metadata. Never mistake a data field for a CLI action.
+        if key in {"json_schema", "structured_output"}:
+            continue
+        normalized = key.replace("_", "").replace("-", "").lower()
+        if normalized in {"toolinfo", "toolname", "subagentinfo", "toolcalls", "commands",
+                          "mcpcalls", "plugincalls", "skillcalls", "agentcalls", "sideeffects",
+                          "mcpservers", "plugins", "skills", "subagents", "agents", "tooluse",
+                          "executedtools", "commandexecution", "plugininfo", "skillinfo"} and value:
             return True
         if isinstance(value, dict) and _side_effect_metadata(value):
             return True
@@ -350,8 +382,8 @@ def _parse_result(body: dict, schema: dict | None = None) -> dict:
         except (ValueError, TypeError):
             raise _failure("Antigravity schema text and parsed value are malformed or inconsistent.", "malformed_output") from None
         try:
-            Draft202012Validator(schema).validate(body["structured_output"])
-        except (SchemaValidationError, SchemaError):
+            Draft202012Validator(schema, registry=Registry()).validate(body["structured_output"])
+        except (SchemaValidationError, SchemaError, Unresolvable):
             raise _failure("Antigravity structured output violated the supplied JSON Schema.", "malformed_output") from None
     return body
 
@@ -432,6 +464,18 @@ def _terminate(process) -> None:
     process.wait()
 
 
+def _wait_for_exit(process, deadline: float, cancellation: threading.Event | None) -> int:
+    while process.poll() is None:
+        if cancellation is not None and cancellation.is_set():
+            raise _failure("Antigravity request cancelled while waiting for exit.", "cancelled")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _failure("Antigravity did not exit within the request deadline.", "timeout")
+        with suppress(subprocess.TimeoutExpired):
+            return process.wait(timeout=min(remaining, .1))
+    return process.returncode
+
+
 def _run_process(command: list[str], prompt: str, *, cwd: str, env: dict,
                  timeout: float, cancellation: threading.Event, stream: _Stream) -> dict:
     if cancellation.is_set():
@@ -490,10 +534,11 @@ def _run_process(command: list[str], prompt: str, *, cwd: str, env: dict,
                                     selector.register(process.stdin, selectors.EVENT_WRITE, "stdin")
             if pending.strip():
                 stream.feed(pending)
-            try:
-                code = process.wait(timeout=max(.01, deadline - time.monotonic()))
-            except subprocess.TimeoutExpired:
-                raise _failure("Antigravity did not exit within the request deadline.", "timeout") from None
+            code = _wait_for_exit(process, deadline, cancellation)
+            if code:
+                raise _diagnostic_error("", stderr.decode("utf-8", errors="replace"), code)
+            if offset != len(input_):
+                raise _failure("Antigravity ended before receiving the complete supplied conversation.", "malformed_output")
             return stream.finish(stderr.decode("utf-8", errors="replace"), code)
     finally:
         _terminate(process)
@@ -523,24 +568,7 @@ class AntigravityCLIChatModel(BaseChatModel):
     def with_structured_output(self, schema, *, include_raw=False, **kwargs):
         if kwargs or not isinstance(schema, type) or not issubclass(schema, BaseModel):
             raise ValueError("Antigravity structured output requires a Pydantic model and supported options.")
-        specification = schema.model_json_schema()
-        encoded = json.dumps(specification, allow_nan=False, ensure_ascii=False)
-        if len(encoded.encode("utf-8")) > 65536 or specification.get("type") != "object":
-            raise ValueError("Antigravity schema must be an object within the adapter size limit.")
-        def local_refs(value):
-            if isinstance(value, dict):
-                if "$ref" in value and (not isinstance(value["$ref"], str) or not value["$ref"].startswith("#")):
-                    raise ValueError("Antigravity schema references must be local; remote schema downloads are prohibited.")
-                for item in value.values():
-                    local_refs(item)
-            elif isinstance(value, list):
-                for item in value:
-                    local_refs(item)
-        local_refs(specification)
-        try:
-            Draft202012Validator.check_schema(specification)
-        except SchemaError:
-            raise ValueError("Invalid Antigravity JSON Schema.") from None
+        specification = _validated_schema(schema.model_json_schema())
 
         def validate(message):
             try:
@@ -558,11 +586,13 @@ class AntigravityCLIChatModel(BaseChatModel):
         schema = kwargs.pop("native_schema", None)
         if stop or kwargs or (schema is not None and not isinstance(schema, dict)):
             raise ValueError("Unsupported Antigravity generation parameters.")
+        if schema is not None:
+            schema = _validated_schema(schema)  # Also protect direct bind(native_schema=...) callers.
         if not _valid_model(self.model_name) or self.effort not in {None, "low", "medium", "high"}:
             raise ValueError("Choose a Gemini slug from agy models and a documented low/medium/high effort.")
         if not math.isfinite(self.timeout):
             raise ValueError("Antigravity timeout must be finite.")
-        executable, version = preflight(self.executable)
+        executable, version = preflight(self.executable, cancellation)
         system, prompt = _conversation(messages)
         for attempt in range(self.max_retries + 1):
             # Recheck actual global settings for every retry, without editing or
@@ -614,6 +644,35 @@ class AntigravityCLIChatModel(BaseChatModel):
 
 def _valid_model(model):
     return isinstance(model, str) and bool(re.fullmatch(r"gemini-[a-z0-9][a-z0-9.-]{0,100}", model))
+
+
+def _validated_schema(specification: dict) -> dict:
+    """No remote IDs/references or implicit schema downloads in CLI or Python."""
+    def local_refs(value):
+        if isinstance(value, dict):
+            if "$id" in value:
+                raise ValueError("Schema resource IDs are unsupported")
+            for key in ("$ref", "$dynamicRef"):
+                if key in value and (not isinstance(value[key], str) or not value[key].startswith("#")):
+                    raise ValueError("Remote schema references are prohibited")
+            if "$schema" in value and value["$schema"] != "https://json-schema.org/draft/2020-12/schema":
+                raise ValueError("Unreviewed schema dialect")
+            for item in value.values():
+                local_refs(item)
+        elif isinstance(value, list):
+            for item in value:
+                local_refs(item)
+    try:
+        encoded = json.dumps(specification, allow_nan=False, ensure_ascii=False)
+        if len(encoded.encode("utf-8")) > 65536 or specification.get("type") != "object":
+            raise ValueError("Schema shape/size limit")
+        specification = _json_object(encoded)
+        local_refs(specification)
+        Draft202012Validator.check_schema(specification)
+        return specification
+    except (ValueError, TypeError, SchemaError, RecursionError):
+        raise _failure("Antigravity schema is invalid, unreviewed or contains external references. "
+                       "No inference or schema download was requested.", "capability") from None
 
 
 class AntigravityCLIClient(BaseLLMClient):

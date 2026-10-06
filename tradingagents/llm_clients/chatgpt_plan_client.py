@@ -13,6 +13,8 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError, ValidationError as SchemaValidationError
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -25,11 +27,14 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableLambda
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
+from referencing import Registry
+from referencing.exceptions import Unresolvable
 
 from .base_client import BaseLLMClient
 from .chatgpt_plan_auth import RESOURCE, ChatGPTAuthStore
 from .subscription_errors import SubscriptionError, redact, response_error
+from .subscription_json import json_object
 
 _TOOL_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 _NAMESPACE = "tradingagents"
@@ -159,7 +164,7 @@ def _completed_response(response, access_token: str) -> dict:
         if data == "[DONE]":
             continue
         try:
-            event = json.loads(data)
+            event = json_object(data)
             event_type = event["type"]
             if not isinstance(event_type, str):
                 raise ValueError("Invalid event type.")
@@ -208,7 +213,7 @@ def response_message(response: dict, tool_names: set[str], *, previous_call_ids:
                     raise ValueError("Unknown function.")
                 if not isinstance(call_id, str) or not call_id or call_id in ids:
                     raise ValueError("Missing or duplicate call ID.")
-                arguments = json.loads(item["arguments"])
+                arguments = json_object(item["arguments"])
                 if not isinstance(arguments, dict):
                     raise ValueError("Function arguments must be an object.")
                 calls.append({"type": "tool_call", "name": name, "args": arguments, "id": call_id})
@@ -238,7 +243,7 @@ def response_message(response: dict, tool_names: set[str], *, previous_call_ids:
 class ChatGPTPlanChatModel(BaseChatModel):
     model_name: str
     max_retries: int = Field(default=2, ge=0)
-    timeout: float = Field(default=600, gt=0)
+    timeout: float = Field(default=600, gt=0, allow_inf_nan=False)
     reasoning_effort: str | None = None
     _auth: ChatGPTAuthStore = PrivateAttr(default_factory=ChatGPTAuthStore)
 
@@ -282,16 +287,22 @@ class ChatGPTPlanChatModel(BaseChatModel):
         if method not in {None, "json_schema"} or not strict or kwargs:
             raise NotImplementedError("ChatGPT plan structured output uses strict native json_schema.")
         definition = convert_to_openai_tool(schema, strict=True)["function"]
+        specification = _without_schema_defaults(definition["parameters"])
         structured = self.bind(text={"format": {"type": "json_schema", "name": definition["name"],
-                                               "schema": _without_schema_defaults(definition["parameters"]), "strict": True}})
+                                               "schema": specification, "strict": True}})
 
         def parse(message):
-            if message.tool_calls:
-                raise ValueError("Structured response unexpectedly contains tool calls.")
-            value = json.loads(message.content)
-            if isinstance(schema, type) and issubclass(schema, BaseModel):
-                return schema.model_validate(value)
-            return value
+            try:
+                if message.tool_calls:
+                    raise ValueError("Structured response contains tool calls")
+                value = json_object(message.content)
+                Draft202012Validator(specification, registry=Registry()).validate(value)
+                if isinstance(schema, type) and issubclass(schema, BaseModel):
+                    return schema.model_validate_json(message.content, strict=True)
+                return value
+            except (ValueError, TypeError, ValidationError, SchemaValidationError, SchemaError, Unresolvable):
+                raise SubscriptionError("ChatGPT structured output violated the requested schema; "
+                                        "no free-text fallback was requested.", kind="malformed_output") from None
 
         if not include_raw:
             return structured | RunnableLambda(parse)
@@ -299,7 +310,7 @@ class ChatGPTPlanChatModel(BaseChatModel):
         def parse_with_raw(message):
             try:
                 return {"raw": message, "parsed": parse(message), "parsing_error": None}
-            except (ValueError, TypeError) as exc:
+            except SubscriptionError as exc:
                 return {"raw": message, "parsed": None, "parsing_error": exc}
 
         return structured | RunnableLambda(parse_with_raw)
