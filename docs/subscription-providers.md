@@ -163,14 +163,18 @@ Validation on 2026-10-06, Python 3.12.14:
 
 | Check | Result |
 | --- | --- |
-| Full upstream suite plus new offline tests, including optional Bedrock dependency | **1,393 passed; 0 failed; 5 integration tests deselected; 20 upstream warnings** |
-| Subscription auth/transport/tool/routing tests | **130 passed** |
+| Full upstream suite plus new offline tests, including optional Bedrock dependency | **1,440 passed; 0 failed; 5 integration tests deselected; 20 upstream warnings** |
+| Subscription auth/transport/tool/routing tests | **177 passed** |
 | Explicit live-test collection with default guards | **4 skipped**; no sign-in or inference performed |
 | Ruff across repository | Passed |
 | Actual official Gemini CLI 0.62.0 version/help and settings merge | Passed without auth/inference; conflicting API, shell, hook and credit settings were overridden |
 | Actual Market Analyst + existing LangGraph ToolNode, mocked transport/data | Passed: stock-data tool → ToolMessage → indicator tool → ToolMessage → verified snapshot → final report; wrap-up budget also covered |
 | Subscription-backed live invoke/schema/two tool rounds/Gemini JSON | Pending user sign-in and entitlement verification |
 | Full AAPL run using both subscriptions | Pending consolidated live session |
+
+The [2026-10-06 code review](subscription-code-review.md) records the corrected
+registration, permission, loopback, tool-ID, SSE and malformed-protocol issues,
+with 47 additional offline regression cases. Live verification remains pending.
 
 The default pytest configuration excludes `integration`: the five deselected
 tests are the four new subscription live checks and one existing DeepSeek live
